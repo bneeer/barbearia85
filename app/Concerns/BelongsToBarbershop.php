@@ -14,7 +14,7 @@ trait BelongsToBarbershop
 
         // seta automaticamente no create
         static::creating(function (Model $model) {
-            if (! $model->barbershop_id && app('currentBarbershopId')) {
+            if (!$model->barbershop_id && app()->bound('currentBarbershopId')) {
                 $model->barbershop_id = app('currentBarbershopId');
             }
         });

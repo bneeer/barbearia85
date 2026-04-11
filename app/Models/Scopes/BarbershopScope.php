@@ -11,11 +11,13 @@ class BarbershopScope implements Scope
     /**
      * Apply the scope to a given Eloquent query builder.
      */
-    public function apply(Builder $builder, Model $model): void
+    public function apply(Builder $builder, Model $model)
     {
-        if ($barbershopId = app('currentBarbershopId')) {
+        $barbershopId = app('currentBarbershopId');
+
+        if ($barbershopId) {
             $builder->where(
-                $model->getTable().'.barbershop_id',
+                $model->getTable() . '.barbershop_id',
                 $barbershopId
             );
         }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { BookOpen, FolderGit2, LayoutGrid } from 'lucide-vue-next';
 import AppLogo from '@/components/AppLogo.vue';
 import NavFooter from '@/components/NavFooter.vue';
@@ -14,8 +14,11 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { useAuth } from '@/composables/useAuth';
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
+
+const { isAdmin } = useAuth();
 
 const mainNavItems: NavItem[] = [
     {
@@ -23,7 +26,21 @@ const mainNavItems: NavItem[] = [
         href: dashboard(),
         icon: LayoutGrid,
     },
+    {
+        title: 'Barbeiros',
+        href: 'barbers/',
+        icon: LayoutGrid,
+        requiresAdmin: true,
+    },
 ];
+
+const filteredNavItems = mainNavItems.filter((item) => {
+    if (item.requiresAdmin) {
+        return isAdmin.value;
+    }
+
+    return true;
+});
 
 const footerNavItems: NavItem[] = [
     {
@@ -54,7 +71,7 @@ const footerNavItems: NavItem[] = [
         </SidebarHeader>
 
         <SidebarContent>
-            <NavMain :items="mainNavItems" />
+            <NavMain :items="filteredNavItems" />
         </SidebarContent>
 
         <SidebarFooter>

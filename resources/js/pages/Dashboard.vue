@@ -43,5 +43,10 @@ defineOptions({
         >
             <PlaceholderPattern />
         </div>
+        <div class="bg-black text-white">
+            <button class="bg-gold hover:bg-gold-dark rounded px-4 py-2 font-bold text-black">
+                Agendar
+            </button>
+        </div>
     </div>
 </template>

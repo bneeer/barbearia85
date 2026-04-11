@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Inertia\Inertia;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -29,6 +30,21 @@ class AppServiceProvider extends ServiceProvider
         App::singleton('currentBarbershopId', function () {
             return auth()->user()?->barbershop_id;
         });
+
+        Inertia::share([
+            'auth' => function () {
+                return auth()->user()
+                    ? [
+                        'user' => [
+                            'id' => auth()->user()->id,
+                            'name' => auth()->user()->name,
+                            'email' => auth()->user()->email,
+                            'role' => auth()->user()->role,
+                        ]
+                    ]
+                    : null;
+            },
+        ]);
 
     }
 
