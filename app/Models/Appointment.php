@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Concerns\BelongsToBarbershop;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Appointment extends Model
 {
-    use HasFactory, SoftDeletes, BelongsToBarbershop;
+    use BelongsToBarbershop, HasFactory, SoftDeletes;
 
     protected $fillable = [
         'barbershop_id',
@@ -18,12 +19,12 @@ class Appointment extends Model
         'start_time',
         'end_time',
         'status',
-        'notes'
+        'notes',
     ];
 
     protected $casts = [
         'start_time' => 'datetime',
-        'end_time'   => 'datetime',
+        'end_time' => 'datetime',
     ];
 
     public function barbershop()

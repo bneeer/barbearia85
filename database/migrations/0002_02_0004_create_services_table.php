@@ -10,6 +10,7 @@ return new class extends Migration {
             $table->id();
             $table->foreignId('barbershop_id')->constrained()->cascadeOnDelete();
             $table->string('name');
+            $table->text('description');
             $table->integer('duration');
             $table->decimal('price', 10, 2);
             $table->timestamps();

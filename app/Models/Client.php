@@ -2,20 +2,21 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Concerns\BelongsToBarbershop;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Client extends Model
 {
-    use HasFactory, SoftDeletes, BelongsToBarbershop;
+    use BelongsToBarbershop, HasFactory, SoftDeletes;
 
     protected $fillable = [
         'barbershop_id',
         'name',
         'phone',
         'email',
-        'notes'
+        'notes',
     ];
 
     public function barbershop()

@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileDeleteRequest;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
+use App\Support\BarberPhoto;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -38,7 +40,13 @@ class ProfileController extends Controller
      */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
-        $request->user()->fill($request->validated());
+        $user = $request->user();
+        $user->fill($request->safe()->except('photo'));
+        $oldPhoto = $user->photo_path;
+
+        if ($request->hasFile('photo')) {
+            $user->photo_path = BarberPhoto::store($request->file('photo'));
+        }
 
         if ($request->user()->isDirty('email')) {
             $request->user()->email_verified_at = null;
@@ -46,7 +54,11 @@ class ProfileController extends Controller
 
         $request->user()->save();
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Profile updated.')]);
+        if ($request->hasFile('photo') && $oldPhoto) {
+            Storage::disk('public')->delete($oldPhoto);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Perfil atualizado.']);
 
         return to_route('profile.edit');
     }
@@ -61,6 +73,9 @@ class ProfileController extends Controller
         Auth::logout();
 
         $user->delete();
+        if ($user->photo_path) {
+            Storage::disk('public')->delete($user->photo_path);
+        }
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();

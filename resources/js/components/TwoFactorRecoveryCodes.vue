@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { Eye, EyeClosed, Lock, Refresh } from '@iconoir/vue';
 import { Form } from '@inertiajs/vue3';
-import { Eye, EyeOff, LockKeyhole, RefreshCw } from 'lucide-vue-next';
 import { nextTick, onMounted, ref, useTemplateRef } from 'vue';
 import AlertError from '@/components/AlertError.vue';
 import { Button } from '@/components/ui/button';
@@ -42,11 +42,11 @@ onMounted(async () => {
     <Card class="w-full">
         <CardHeader>
             <CardTitle class="flex gap-3">
-                <LockKeyhole class="size-4" />2FA recovery codes
+                <Lock aria-hidden="true" class="size-4" />Códigos de recuperação
             </CardTitle>
             <CardDescription>
-                Recovery codes let you regain access if you lose your 2FA
-                device. Store them in a secure password manager.
+                Use estes códigos para recuperar o acesso se perder seu
+                dispositivo. Guarde-os em um gerenciador de senhas seguro.
             </CardDescription>
         </CardHeader>
         <CardContent>
@@ -55,11 +55,12 @@ onMounted(async () => {
             >
                 <Button @click="toggleRecoveryCodesVisibility" class="w-fit">
                     <component
-                        :is="isRecoveryCodesVisible ? EyeOff : Eye"
+                        :is="isRecoveryCodesVisible ? EyeClosed : Eye"
+                        aria-hidden="true"
                         class="size-4"
                     />
-                    {{ isRecoveryCodesVisible ? 'Hide' : 'View' }} recovery
-                    codes
+                    {{ isRecoveryCodesVisible ? 'Ocultar' : 'Ver' }} códigos de
+                    recuperação
                 </Button>
 
                 <Form
@@ -75,7 +76,7 @@ onMounted(async () => {
                         type="submit"
                         :disabled="processing"
                     >
-                        <RefreshCw /> Regenerate codes
+                        <Refresh aria-hidden="true" /> Gerar novos códigos
                     </Button>
                 </Form>
             </div>
@@ -111,10 +112,9 @@ onMounted(async () => {
                         </div>
                     </div>
                     <p class="text-xs text-muted-foreground select-none">
-                        Each recovery code can be used once to access your
-                        account and will be removed after use. If you need more,
-                        click
-                        <span class="font-bold">Regenerate codes</span> above.
+                        Cada código pode ser usado apenas uma vez. Para gerar
+                        novos códigos, clique em
+                        <span class="font-bold">Gerar novos códigos</span>.
                     </p>
                 </div>
             </div>

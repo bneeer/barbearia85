@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { LogOut, Settings } from '@iconoir/vue';
 import { Link, router } from '@inertiajs/vue3';
-import { LogOut, Settings } from 'lucide-vue-next';
 import {
     DropdownMenuGroup,
     DropdownMenuItem,
@@ -33,8 +33,8 @@ defineProps<Props>();
     <DropdownMenuGroup>
         <DropdownMenuItem :as-child="true">
             <Link class="block w-full cursor-pointer" :href="edit()" prefetch>
-                <Settings class="mr-2 h-4 w-4" />
-                Settings
+                <Settings aria-hidden="true" class="mr-2 h-4 w-4" />
+                Configurações
             </Link>
         </DropdownMenuItem>
     </DropdownMenuGroup>
@@ -47,8 +47,8 @@ defineProps<Props>();
             as="button"
             data-test="logout-button"
         >
-            <LogOut class="mr-2 h-4 w-4" />
-            Log out
+            <LogOut aria-hidden="true" class="mr-2 h-4 w-4" />
+            Sair
         </Link>
     </DropdownMenuItem>
 </template>

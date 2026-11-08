@@ -4,11 +4,67 @@ namespace Tests\Feature\Settings;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class ProfileUpdateTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_barber_can_upload_and_replace_a_profile_photo(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create(['role' => 'barber']);
+        $this->actingAs($user)->patch(route('profile.update'), [
+            'name' => $user->name,
+            'email' => $user->email,
+            'photo' => UploadedFile::fake()->image('photo.jpg'),
+        ])->assertSessionHasNoErrors();
+        $oldPath = $user->fresh()->photo_path;
+        Storage::disk('public')->assertExists($oldPath);
+        $this->get(route('barber.photo', $user))->assertOk();
+
+        $this->actingAs($user)->patch(route('profile.update'), [
+            'name' => $user->name,
+            'email' => $user->email,
+            'photo' => UploadedFile::fake()->image('new.png'),
+        ])->assertSessionHasNoErrors();
+        Storage::disk('public')->assertMissing($oldPath);
+        Storage::disk('public')->assertExists($user->fresh()->photo_path);
+    }
+
+    public function test_invalid_profile_photo_is_rejected(): void
+    {
+        $user = User::factory()->create(['role' => 'barber']);
+        $this->actingAs($user)->patch(route('profile.update'), [
+            'name' => $user->name,
+            'email' => $user->email,
+            'photo' => UploadedFile::fake()->create('file.txt', 10, 'text/plain'),
+        ])->assertSessionHasErrors('photo');
+    }
+
+    public function test_non_barber_cannot_upload_a_profile_photo(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create(['role' => 'client']);
+        $this->actingAs($user)->patch(route('profile.update'), [
+            'name' => $user->name,
+            'email' => $user->email,
+            'photo' => UploadedFile::fake()->image('photo.jpg'),
+        ])->assertSessionHasErrors('photo');
+        $this->assertNull($user->fresh()->photo_path);
+    }
+
+    public function test_photo_larger_than_two_megabytes_is_rejected(): void
+    {
+        $user = User::factory()->create(['role' => 'barber']);
+        $this->actingAs($user)->patch(route('profile.update'), [
+            'name' => $user->name,
+            'email' => $user->email,
+            'photo' => UploadedFile::fake()->image('photo.jpg')->size(2049),
+        ])->assertSessionHasErrors('photo');
+    }
 
     public function test_profile_page_is_displayed()
     {

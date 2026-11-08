@@ -1,30 +1,32 @@
 <script setup lang="ts">
-import { Link, useForm } from '@inertiajs/vue3';
+import { Head } from '@inertiajs/vue3';
+import BarberForm from '@/components/BarberForm.vue';
+import type { Barber, BarberService } from '@/types/barber';
 
-const props = defineProps<{
-    barber: {
-        id: number;
-        name: string;
-        email: string;
-    };
+defineProps<{
+    barber: Barber;
+    services: BarberService[];
+    barbershops: { id: number; name: string }[];
 }>();
-
-const form = useForm({
-    name: props.barber.name,
-    email: props.barber.email,
+defineOptions({
+    layout: {
+        breadcrumbs: [
+            { title: 'Barbeiros', href: '/barbers' },
+            { title: 'Editar barbeiro', href: '#' },
+        ],
+    },
 });
-
-function submit() {
-    form.put(`/barbers/${props.barber.id}`);
-}
 </script>
 
 <template>
-    <form @submit.prevent="submit">
-        <input v-model="form.name" />
-        <input v-model="form.email" />
-
-        <button @click="submit">Atualizar</button>
-        <Link :href="`/barbers/`">Voltar</Link>
-    </form>
+    <Head title="Editar barbeiro" />
+    <div class="max-w-xl space-y-6 p-6">
+        <h1 class="text-2xl font-semibold">Editar barbeiro</h1>
+        <BarberForm
+            :barber="barber"
+            :services="services"
+            :barbershops="barbershops"
+            :default-barbershop-id="barber.barbershop_id ?? 0"
+        />
+    </div>
 </template>

@@ -2,20 +2,31 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Concerns\BelongsToBarbershop;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Service extends Model
 {
-    use HasFactory, SoftDeletes, BelongsToBarbershop;
+    use BelongsToBarbershop, HasFactory, SoftDeletes;
 
     protected $fillable = [
         'barbershop_id',
         'name',
+        'description',
         'duration',
-        'price'
+        'price',
+        'is_active',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_active' => 'boolean',
+            'price' => 'decimal:2',
+        ];
+    }
 
     public function barbershop()
     {
@@ -25,5 +36,10 @@ class Service extends Model
     public function appointments()
     {
         return $this->hasMany(Appointment::class);
+    }
+
+    public function barbers()
+    {
+        return $this->belongsToMany(User::class, 'barber_service');
     }
 }

@@ -90,26 +90,6 @@
 }
 
 :root {
-    /* base */
-    --color-bg: #0B0B0B;
-    --color-bg-soft: #121212;
-    --color-border: #2A2A2A;
-
-    /* texto */
-    --color-text: #FFFFFF;
-    --color-text-muted: #A0A0A0;
-
-    /* identidade */
-    --color-primary: #C9A227;
-    --color-primary-dark: #A17F1A;
-    --color-primary-light: #E5C14C;
-
-    /* estados */
-    --color-success: #2E7D32;
-    --color-error: #C62828;
-    --color-warning: #ED6C02;
-    --color-info: #0288D1;
-
     --background: hsl(0 0% 100%);
     --foreground: hsl(0 0% 3.9%);
     --card: hsl(0 0% 100%);
@@ -191,34 +171,31 @@
     }
 }
 
-body {
-    background-color: var(--color-bg);
-    color: var(--color-text);
-}
-
-.card {
-    background-color: var(--color-bg-soft);
-    border: 1px solid var(--color-border);
-}
-
-.btn-primary {
-    background-color: var(--color-primary);
-    color: #000;
-}
-
-.btn-primary:hover {
-    background-color: var(--color-primary-dark);
-}
-
-.theme-barbearia85 {
-    --color-bg: #0B0B0B;
-    --color-bg-soft: #121212;
-    --color-border: #2A2A2A;
-
-    --color-text: #FFFFFF;
-    --color-text-muted: #A0A0A0;
-
-    --color-primary: #C9A227;
-    --color-primary-dark: #A17F1A;
-    --color-primary-light: #E5C14C;
+:root,
+.dark {
+    --background: #0b0b0b;
+    --foreground: #f4f0e5;
+    --card: #151515;
+    --card-foreground: #f4f0e5;
+    --popover: #181818;
+    --popover-foreground: #f4f0e5;
+    --primary: #d3b04c;
+    --primary-foreground: #16120a;
+    --secondary: #29251b;
+    --secondary-foreground: #f4f0e5;
+    --muted: #242424;
+    --muted-foreground: #c1b9a7;
+    --accent: #342d1c;
+    --accent-foreground: #f4f0e5;
+    --border: #3b3528;
+    --input: #49412f;
+    --ring: #d3b04c;
+    --sidebar-background: #11100e;
+    --sidebar-foreground: #f4f0e5;
+    --sidebar-primary: #d3b04c;
+    --sidebar-primary-foreground: #16120a;
+    --sidebar-accent: #342d1c;
+    --sidebar-accent-foreground: #f4f0e5;
+    --sidebar-border: #3b3528;
+    --sidebar-ring: #d3b04c;
 }

@@ -6,6 +6,7 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -18,13 +19,17 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, TwoFactorAuthenticatable;
 
+    protected $appends = ['avatar'];
+
     protected $fillable = [
         'name',
         'email',
         'password',
         'barbershop_id',
-        'role'
+        'role',
+        'phone',
     ];
+
     /**
      * Get the attributes that should be cast.
      *
@@ -39,14 +44,31 @@ class User extends Authenticatable
         ];
     }
 
+    protected function avatar(): Attribute
+    {
+        return Attribute::get(fn () => $this->photo_path
+            ? route('barber.photo', ['user' => $this->id, 'v' => hash('sha256', $this->photo_path)])
+            : null);
+    }
+
     public function barbershop()
     {
         return $this->belongsTo(Barbershop::class);
     }
 
+    public function barbershops()
+    {
+        return $this->belongsToMany(Barbershop::class)->withTimestamps();
+    }
+
     public function appointments()
     {
         return $this->hasMany(Appointment::class);
+    }
+
+    public function services()
+    {
+        return $this->belongsToMany(Service::class, 'barber_service');
     }
 
     public function workingHours()

@@ -1,52 +1,18 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
-import PlaceholderPattern from '@/components/PlaceholderPattern.vue';
 import { dashboard } from '@/routes';
 
 defineOptions({
-    layout: {
-        breadcrumbs: [
-            {
-                title: 'Dashboard',
-                href: dashboard(),
-            },
-        ],
-    },
+    layout: { breadcrumbs: [{ title: 'Início', href: dashboard() }] },
 });
 </script>
 
 <template>
-    <Head title="Dashboard" />
-
-    <div
-        class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4"
-    >
-        <div class="grid auto-rows-min gap-4 md:grid-cols-3">
-            <div
-                class="relative aspect-video overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border"
-            >
-                <PlaceholderPattern />
-            </div>
-            <div
-                class="relative aspect-video overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border"
-            >
-                <PlaceholderPattern />
-            </div>
-            <div
-                class="relative aspect-video overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border"
-            >
-                <PlaceholderPattern />
-            </div>
-        </div>
-        <div
-            class="relative min-h-[100vh] flex-1 rounded-xl border border-sidebar-border/70 md:min-h-min dark:border-sidebar-border"
-        >
-            <PlaceholderPattern />
-        </div>
-        <div class="bg-black text-white">
-            <button class="bg-gold hover:bg-gold-dark rounded px-4 py-2 font-bold text-black">
-                Agendar
-            </button>
-        </div>
+    <Head title="Início" />
+    <div class="p-6">
+        <h1 class="text-2xl font-semibold">Bem-vindo à Barbearia 85</h1>
+        <p class="mt-2 text-muted-foreground">
+            Gerencie sua barbearia pelo menu ao lado.
+        </p>
     </div>
 </template>
