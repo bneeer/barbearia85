@@ -34,6 +34,13 @@
         "vue-tsc": "^2.2.4"
     },
     "dependencies": {
+        "@fullcalendar/core": "^6.1.19",
+        "@fullcalendar/daygrid": "^6.1.19",
+        "@fullcalendar/interaction": "^6.1.19",
+        "@fullcalendar/list": "^6.1.19",
+        "@fullcalendar/luxon3": "^6.1.19",
+        "@fullcalendar/timegrid": "^6.1.19",
+        "@fullcalendar/vue3": "^6.1.19",
         "@iconoir/vue": "^7.12.2",
         "@inertiajs/vite": "^3.0.0",
         "@inertiajs/vue3": "^3.0.0",
@@ -42,6 +49,7 @@
         "clsx": "^2.1.1",
         "laravel-vite-plugin": "^3.0.0",
         "lucide-vue-next": "^0.468.0",
+        "luxon": "^3.7.2",
         "reka-ui": "^2.6.1",
         "tailwind-merge": "^3.2.0",
         "tailwindcss": "^4.1.1",

@@ -199,6 +199,48 @@ class BookingTest extends TestCase
         $this->assertDatabaseCount('notifications', 2);
     }
 
+    public function test_booking_combines_services_and_uses_their_total_duration_and_price(): void
+    {
+        $shop = $this->shop(close: '19:40');
+        $service = $this->service($shop);
+        $barber = $this->barber($shop, $service);
+        $secondService = Service::create([
+            'barbershop_id' => $shop->id, 'name' => 'Barba', 'description' => 'Barba completa',
+            'duration' => 60, 'price' => 35, 'is_active' => true,
+        ]);
+        $barber->services()->attach($secondService);
+        $barberWithoutSecondService = $this->barber($shop, $service);
+        $selection = [
+            'barbershop_id' => $shop->id,
+            'service_ids' => [$service->id, $secondService->id],
+            'barber_id' => $barber->id,
+            'date' => '2026-11-09',
+        ];
+
+        $slots = $this->availability($selection)->assertOk()->json('slots');
+        $this->assertContains('09:00', array_column($slots, 'time'));
+        $this->assertNotContains('19:00', array_column($slots, 'time'));
+        $this->assertSame([], $this->availability([
+            ...$selection, 'barber_id' => $barberWithoutSecondService->id,
+        ])->assertOk()->json('slots'));
+        $this->postJson('/agendar', $this->booking($shop, $service, $barber, [
+            'service_ids' => [$service->id, $secondService->id],
+        ]))->assertCreated();
+
+        $appointment = Appointment::withoutGlobalScope(BarbershopScope::class)->firstOrFail();
+        $this->assertSame($service->id, $appointment->service_id);
+        $this->assertDatabaseHas('appointment_service', [
+            'appointment_id' => $appointment->id, 'service_id' => $service->id,
+        ]);
+        $this->assertDatabaseHas('appointment_service', [
+            'appointment_id' => $appointment->id, 'service_id' => $secondService->id,
+        ]);
+        $this->assertSame('2026-11-09 13:40:00', $appointment->end_time->format('Y-m-d H:i:s'));
+        $this->assertSame('Corte + Barba', Notification::firstOrFail()->payload['service']);
+        $this->assertSame(100, Notification::firstOrFail()->payload['duration']);
+        $this->assertEquals(85, Notification::firstOrFail()->payload['price']);
+    }
+
     public function test_confirmation_rejects_invalid_relationships_and_forged_or_stale_slots(): void
     {
         $shop = $this->shop();

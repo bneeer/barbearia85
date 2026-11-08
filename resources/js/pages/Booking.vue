@@ -38,7 +38,7 @@ const props = defineProps<{ barbershops: Shop[]; csrfToken: string }>();
 const labels = [
     'Seus dados',
     'Unidade',
-    'Serviço',
+    'Serviços',
     'Barbeiro',
     'Data e horário',
     'Confirmação',
@@ -46,7 +46,7 @@ const labels = [
 const titles = [
     'Vamos nos conhecer?',
     'Onde será sua próxima experiência?',
-    'Qual cuidado você procura?',
+    'Quais cuidados você procura?',
     'Com quem você quer agendar?',
     'Reserve um momento só seu.',
     'Tudo pronto para confirmar?',
@@ -54,14 +54,14 @@ const titles = [
 const copies = [
     'Informe seus dados para identificar seu agendamento.',
     'Escolha uma unidade e conheça o espaço pelas fotos. Deslize para ver mais opções.',
-    'Estes são os serviços prestados pelos barbeiros desta unidade.',
+    'Selecione um ou mais serviços para combinar na mesma visita.',
     'Escolha seu profissional favorito ou veja os horários de toda a equipe.',
     'Escolha uma data e um horário disponível. Os horários seguem o fuso da unidade.',
     'Confira os detalhes antes de reservar. O horário será validado novamente na confirmação.',
 ];
 const ctas = [
     'Escolher unidade',
-    'Escolher serviço',
+    'Escolher serviços',
     'Escolher barbeiro',
     'Ver datas e horários',
     'Revisar agendamento',
@@ -72,7 +72,7 @@ const name = ref('');
 const email = ref('');
 const phone = ref('');
 const shopId = ref<number | null>(null);
-const serviceId = ref<number | null>(null);
+const serviceIds = ref<number[]>([]);
 const preference = ref<number | 'any' | null>(null);
 const date = ref('');
 const time = ref('');
@@ -91,15 +91,27 @@ let availabilityRequest: AbortController | null = null;
 const shop = computed(() =>
     props.barbershops.find((item) => item.id === shopId.value),
 );
-const service = computed(() =>
-    shop.value?.services.find((item) => item.id === serviceId.value),
+const selectedServices = computed(
+    () =>
+        shop.value?.services.filter((item) =>
+            serviceIds.value.includes(item.id),
+        ) ?? [],
+);
+const totalDuration = computed(() =>
+    selectedServices.value.reduce((total, item) => total + item.duration, 0),
+);
+const totalPrice = computed(() =>
+    selectedServices.value.reduce(
+        (total, item) => total + Number(item.price),
+        0,
+    ),
 );
 const eligibleBarbers = computed(
     () =>
         shop.value?.barbers.filter(
             (barber) =>
-                serviceId.value !== null &&
-                barber.service_ids.includes(serviceId.value),
+                serviceIds.value.length > 0 &&
+                serviceIds.value.every((id) => barber.service_ids.includes(id)),
         ) ?? [],
 );
 const preferenceLabel = computed(() =>
@@ -165,6 +177,86 @@ const formattedDate = computed(() =>
           }).format(new Date(`${date.value}T12:00:00Z`))
         : '',
 );
+const calendarEvent = computed(() => {
+    if (
+        !confirmationId.value ||
+        !shop.value ||
+        !barber.value ||
+        !date.value ||
+        !time.value ||
+        totalDuration.value <= 0
+    ) {
+        return null;
+    }
+
+    const start = zonedDateTimeToUtc(
+        date.value,
+        time.value,
+        shop.value.timezone,
+    );
+    const end = new Date(start.getTime() + totalDuration.value * 60_000);
+    const serviceNames = selectedServices.value
+        .map((item) => item.name)
+        .join(' + ');
+    const title = `${serviceNames} · ${shop.value.name}`;
+    const description = [
+        `Agendamento #${confirmationId.value}`,
+        `Serviços: ${serviceNames}`,
+        `Duração: ${totalDuration.value} min`,
+        `Barbeiro: ${barber.value.name}`,
+        `Unidade: ${shop.value.name}`,
+        ...shop.value.phones.map((contact) => `Contato: ${contact}`),
+    ].join('\n');
+    const details = {
+        title,
+        start,
+        end,
+        description,
+        location: shop.value.address ?? '',
+    };
+    const googleParams = new URLSearchParams({
+        action: 'TEMPLATE',
+        text: details.title,
+        dates: `${calendarDateTime(start)}/${calendarDateTime(end)}`,
+        details: details.description,
+        location: details.location,
+        ctz: shop.value.timezone,
+    });
+    const outlookParams = new URLSearchParams({
+        path: '/calendar/action/compose',
+        rru: 'addevent',
+        subject: details.title,
+        startdt: start.toISOString(),
+        enddt: end.toISOString(),
+        body: details.description,
+        location: details.location,
+    });
+    const ics = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Barbearia 85//Agendamento//PT-BR',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH',
+        'BEGIN:VEVENT',
+        `UID:appointment-${confirmationId.value}@barbearia85`,
+        `DTSTAMP:${calendarDateTime(new Date())}`,
+        `DTSTART:${calendarDateTime(start)}`,
+        `DTEND:${calendarDateTime(end)}`,
+        `SUMMARY:${escapeIcsText(details.title)}`,
+        `DESCRIPTION:${escapeIcsText(details.description)}`,
+        `LOCATION:${escapeIcsText(details.location)}`,
+        'END:VEVENT',
+        'END:VCALENDAR',
+    ]
+        .map(foldIcsLine)
+        .join('\r\n');
+
+    return {
+        googleUrl: `https://calendar.google.com/calendar/render?${googleParams}`,
+        outlookUrl: `https://outlook.live.com/calendar/0/deeplink/compose?${outlookParams}`,
+        ics,
+    };
+});
 const canContinue = computed(() => {
     if (loading.value || submitting.value) {
         return false;
@@ -173,7 +265,7 @@ const canContinue = computed(() => {
     return [
         Boolean(name.value.trim() && email.value.trim() && phone.value.trim()),
         Boolean(shop.value),
-        Boolean(service.value),
+        serviceIds.value.length > 0,
         preference.value !== null,
         Boolean(
             time.value &&
@@ -187,7 +279,7 @@ const canContinue = computed(() => {
         ),
         Boolean(
             shop.value &&
-            service.value &&
+            serviceIds.value.length > 0 &&
             barber.value &&
             date.value &&
             time.value,
@@ -199,23 +291,118 @@ const money = (value: string) =>
         style: 'currency',
         currency: 'BRL',
     }).format(Number(value));
+function zonedDateTimeToUtc(date: string, time: string, timezone: string) {
+    const [year, month, day] = date.split('-').map(Number);
+    const [hour, minute] = time.split(':').map(Number);
+    const target = Date.UTC(year, month - 1, day, hour, minute);
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+    });
+    let timestamp = target;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const parts = Object.fromEntries(
+            formatter
+                .formatToParts(new Date(timestamp))
+                .filter((part) => part.type !== 'literal')
+                .map((part) => [part.type, Number(part.value)]),
+        );
+        const represented = Date.UTC(
+            parts.year,
+            parts.month - 1,
+            parts.day,
+            parts.hour,
+            parts.minute,
+        );
+        const adjustment = target - represented;
+
+        timestamp += adjustment;
+
+        if (adjustment === 0) {
+            break;
+        }
+    }
+
+    return new Date(timestamp);
+}
+function calendarDateTime(value: Date) {
+    return value
+        .toISOString()
+        .replace(/[-:]/g, '')
+        .replace(/\.\d{3}/, '');
+}
+function escapeIcsText(value: string) {
+    return value
+        .replace(/\\/g, '\\\\')
+        .replace(/\r\n|\r|\n/g, '\\n')
+        .replace(/,/g, '\\,')
+        .replace(/;/g, '\\;');
+}
+function foldIcsLine(line: string) {
+    const folded: string[] = [];
+    let current = '';
+    let bytes = 0;
+    let limit = 75;
+
+    for (const character of line) {
+        const characterBytes = new TextEncoder().encode(character).length;
+
+        if (bytes + characterBytes > limit) {
+            folded.push(current);
+            current = character;
+            bytes = characterBytes;
+            limit = 74;
+        } else {
+            current += character;
+            bytes += characterBytes;
+        }
+    }
+
+    folded.push(current);
+
+    return folded.join('\r\n ');
+}
+function saveAppleCalendar() {
+    if (!calendarEvent.value) {
+        return;
+    }
+
+    const blob = new Blob([calendarEvent.value.ics], {
+        type: 'text/calendar;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `agendamento-barbearia85-${confirmationId.value}.ics`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 const selectedClass = (selected: boolean) =>
     selected
         ? 'border-primary bg-primary/10 ring-1 ring-primary'
         : 'border-border hover:border-primary/60';
 
 watch(shopId, () => {
-    serviceId.value = null;
+    serviceIds.value = [];
     preference.value = null;
     date.value = '';
     time.value = '';
     barberId.value = null;
 });
-watch(serviceId, () => {
-    preference.value = null;
-    time.value = '';
-    barberId.value = null;
-});
+watch(
+    () => serviceIds.value.join(','),
+    () => {
+        preference.value = null;
+        time.value = '';
+        barberId.value = null;
+    },
+);
 watch(preference, () => {
     time.value = '';
     barberId.value = null;
@@ -225,14 +412,17 @@ watch(date, () => {
     barberId.value = null;
 });
 watch(step, () => heading.value?.focus(), { flush: 'post' });
-watch([step, date, shopId, serviceId, preference], () => {
-    if (step.value === 4 && date.value) {
-        void loadAvailability();
-    } else {
-        availabilityRequest?.abort();
-        loading.value = false;
-    }
-});
+watch(
+    [step, date, shopId, () => serviceIds.value.join(','), preference],
+    () => {
+        if (step.value === 4 && date.value) {
+            void loadAvailability();
+        } else {
+            availabilityRequest?.abort();
+            loading.value = false;
+        }
+    },
+);
 onBeforeUnmount(() => availabilityRequest?.abort());
 
 async function loadAvailability() {
@@ -247,9 +437,11 @@ async function loadAvailability() {
     fieldErrors.value = {};
     const query = new URLSearchParams({
         barbershop_id: String(shopId.value),
-        service_id: String(serviceId.value),
         date: date.value,
     });
+    serviceIds.value.forEach((id, index) =>
+        query.set(`service_ids[${index}]`, String(id)),
+    );
 
     if (typeof preference.value === 'number') {
         query.set('barber_id', String(preference.value));
@@ -302,6 +494,12 @@ async function loadAvailability() {
     }
 }
 
+function toggleService(id: number) {
+    serviceIds.value = serviceIds.value.includes(id)
+        ? serviceIds.value.filter((selectedId) => selectedId !== id)
+        : [...serviceIds.value, id];
+}
+
 function selectTime(slot: Slot) {
     time.value = slot.time;
     barberId.value =
@@ -337,7 +535,7 @@ async function next() {
                 email: email.value.trim(),
                 phone: phone.value.trim(),
                 barbershop_id: shopId.value,
-                service_id: serviceId.value,
+                service_ids: serviceIds.value,
                 barber_id: barberId.value,
                 date: date.value,
                 time: time.value,
@@ -428,9 +626,13 @@ function back() {
                         {{ formattedDate }}, às {{ time }}
                     </p>
                     <p class="mt-2">
-                        {{ service?.name }} com {{ barber?.name }} ·
-                        {{ service?.duration }} min ·
-                        {{ service ? money(service.price) : '' }}
+                        {{
+                            selectedServices
+                                .map((item) => item.name)
+                                .join(' + ')
+                        }}
+                        com {{ barber?.name }} · {{ totalDuration }} min ·
+                        {{ money(String(totalPrice)) }}
                     </p>
                     <p class="mt-2">{{ shop?.address }}</p>
                     <p
@@ -444,9 +646,52 @@ function back() {
                         Guarde os detalhes da sua reserva. Em caso de
                         imprevisto, entre em contato com a unidade.
                     </p>
-                    <Button as-child class="mt-6"
-                        ><Link href="/">Voltar ao início</Link></Button
-                    >
+                    <div class="mt-6 space-y-3">
+                        <h2 class="font-semibold">Adicionar ao calendário</h2>
+                        <div class="flex flex-wrap gap-3">
+                            <Button
+                                v-if="calendarEvent"
+                                as-child
+                                variant="outline"
+                            >
+                                <a
+                                    :href="calendarEvent.googleUrl"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    Salvar no Google Calendar
+                                </a>
+                            </Button>
+                            <Button
+                                v-if="calendarEvent"
+                                type="button"
+                                variant="outline"
+                                @click="saveAppleCalendar"
+                            >
+                                Salvar no Apple Calendar
+                            </Button>
+                            <Button
+                                v-if="calendarEvent"
+                                as-child
+                                variant="outline"
+                            >
+                                <a
+                                    :href="calendarEvent.outlookUrl"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    Salvar no Microsoft Outlook
+                                </a>
+                            </Button>
+                        </div>
+                        <p class="text-sm text-muted-foreground">
+                            O Apple Calendar será salvo como um arquivo .ics
+                            para importar no seu dispositivo.
+                        </p>
+                    </div>
+                    <Button as-child class="mt-6">
+                        <Link href="/">Voltar ao início</Link>
+                    </Button>
                 </section>
             </template>
             <template v-else>
@@ -636,9 +881,9 @@ function back() {
                             :key="item.id"
                             type="button"
                             class="flex flex-col gap-3 rounded-2xl border p-6 text-left transition-colors"
-                            :class="selectedClass(serviceId === item.id)"
-                            :aria-pressed="serviceId === item.id"
-                            @click="serviceId = item.id"
+                            :class="selectedClass(serviceIds.includes(item.id))"
+                            :aria-pressed="serviceIds.includes(item.id)"
+                            @click="toggleService(item.id)"
                         >
                             <span class="text-xl font-semibold">{{
                                 item.name
@@ -914,19 +1159,22 @@ function back() {
                                 </div>
                                 <div>
                                     <dt class="text-sm text-muted-foreground">
-                                        Serviço
+                                        Serviços
                                     </dt>
-                                    <dd class="mt-1 font-semibold">
-                                        {{ service?.name }}
+                                    <dd
+                                        v-for="item in selectedServices"
+                                        :key="item.id"
+                                        class="mt-1 font-semibold"
+                                    >
+                                        {{ item.name }} ·
+                                        {{ item.duration }} min ·
+                                        {{ money(item.price) }}
                                     </dd>
-                                    <dd class="mt-1 text-sm">
-                                        {{ service?.description }}
-                                    </dd>
-                                    <dd class="mt-1">
-                                        {{ service?.duration }} min ·
-                                        {{
-                                            service ? money(service.price) : ''
-                                        }}
+                                    <dd
+                                        class="mt-2 border-t pt-2 font-semibold"
+                                    >
+                                        Total: {{ totalDuration }} min ·
+                                        {{ money(String(totalPrice)) }}
                                     </dd>
                                 </div>
                                 <div>

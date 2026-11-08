@@ -3,6 +3,8 @@
 use App\Http\Controllers\BarberController;
 use App\Http\Controllers\BarbershopController;
 use App\Http\Controllers\BookingController;
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\ServiceController;
 use App\Models\BarbershopPhoto;
 use App\Models\User;
@@ -34,6 +36,14 @@ Route::get('api/barbershops/{barbershop:slug}/gallery', [BarbershopController::c
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+    Route::get('schedule', [ScheduleController::class, 'index'])->name('schedule.index');
+    Route::get('schedule/events', [ScheduleController::class, 'events'])->name('schedule.events');
+    Route::post('schedule/appointments', [ScheduleController::class, 'storeAppointment'])->name('schedule.appointments.store');
+    Route::post('schedule/appointments/{id}/checkout', [ScheduleController::class, 'checkout'])->name('schedule.appointments.checkout');
+    Route::patch('schedule/appointments/{id}', [ScheduleController::class, 'updateAppointment'])->name('schedule.appointments.update');
+    Route::post('schedule/blocks', [ScheduleController::class, 'storeBlock'])->name('schedule.blocks.store');
+    Route::patch('schedule/blocks/{id}', [ScheduleController::class, 'updateBlock'])->name('schedule.blocks.update');
+    Route::delete('schedule/blocks/{id}', [ScheduleController::class, 'destroyBlock'])->name('schedule.blocks.destroy');
     Route::post('barbershops/{barbershop}/photos', [BarbershopController::class, 'storePhotos'])
         ->name('barbershops.photos.store');
     Route::delete('barbershops/{barbershop}/photos/{photo}', [BarbershopController::class, 'destroyPhoto'])
@@ -41,6 +51,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('barbershops', BarbershopController::class);
     Route::resource('barbers', BarberController::class);
     Route::resource('services', ServiceController::class);
+    Route::resource('products', ProductController::class);
 });
 
 require __DIR__.'/settings.php';

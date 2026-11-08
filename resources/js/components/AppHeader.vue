@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Home, Menu } from '@iconoir/vue';
 import { Link, usePage } from '@inertiajs/vue3';
+import { CalendarDays, Package } from 'lucide-vue-next';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
@@ -26,6 +27,7 @@ import {
     SheetTrigger,
 } from '@/components/ui/sheet';
 import UserMenuContent from '@/components/UserMenuContent.vue';
+import { useAuth } from '@/composables/useAuth';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { getInitials } from '@/composables/useInitials';
 import { dashboard } from '@/routes';
@@ -42,6 +44,7 @@ const props = withDefaults(defineProps<Props>(), {
 const page = usePage();
 const auth = computed(() => page.props.auth);
 const { isCurrentUrl, whenCurrentUrl } = useCurrentUrl();
+const { isAdmin } = useAuth();
 
 const activeItemStyles =
     'text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100';
@@ -52,7 +55,21 @@ const mainNavItems: NavItem[] = [
         href: dashboard(),
         icon: Home,
     },
+    {
+        title: 'Agendamentos',
+        href: '/schedule',
+        icon: CalendarDays,
+    },
+    {
+        title: 'Produtos',
+        href: '/products',
+        icon: Package,
+        requiresAdmin: true,
+    },
 ];
+const filteredNavItems = computed(() =>
+    mainNavItems.filter((item) => !item.requiresAdmin || isAdmin.value),
+);
 </script>
 
 <template>
@@ -85,7 +102,7 @@ const mainNavItems: NavItem[] = [
                             >
                                 <nav class="-mx-3 space-y-1">
                                     <Link
-                                        v-for="item in mainNavItems"
+                                        v-for="item in filteredNavItems"
                                         :key="item.title"
                                         :href="item.href"
                                         class="flex items-center gap-x-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent"
@@ -120,7 +137,7 @@ const mainNavItems: NavItem[] = [
                             class="flex h-full items-stretch space-x-2"
                         >
                             <NavigationMenuItem
-                                v-for="(item, index) in mainNavItems"
+                                v-for="(item, index) in filteredNavItems"
                                 :key="index"
                                 class="relative flex h-full items-center"
                             >

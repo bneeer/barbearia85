@@ -8,21 +8,23 @@ use App\Models\BlockedTime;
 use App\Models\Scopes\BarbershopScope;
 use App\Models\Service;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 class BookingAvailability
 {
-    public function barbers(Barbershop $shop, Service $service, ?int $barberId = null): Collection
+    public function barbers(Barbershop $shop, Collection $services, ?int $barberId = null): Collection
     {
+        $serviceIds = $services->pluck('id')->all();
+
         return $shop->users()->where('role', 'barber')
             ->whereHas('services', fn ($query) => $query->withoutGlobalScope(BarbershopScope::class)
-                ->where('services.id', $service->id)->where('is_active', true))
+                ->whereIn('services.id', $serviceIds)->where('is_active', true), '=', count($serviceIds))
             ->when($barberId !== null, fn ($query) => $query->where('users.id', $barberId))
             ->orderBy('name')->orderBy('users.id')->get(['users.id', 'users.name', 'users.photo_path']);
     }
 
-    public function slots(Barbershop $shop, Service $service, string $date, ?int $barberId = null): array
+    public function slots(Barbershop $shop, Collection $services, string $date, ?int $barberId = null): array
     {
         $day = CarbonImmutable::createFromFormat('!Y-m-d', $date, $shop->timezone);
         $today = CarbonImmutable::now($shop->timezone)->startOfDay();
@@ -31,11 +33,13 @@ class BookingAvailability
         }
 
         $hours = $shop->opening_hours[strtolower($day->format('l'))] ?? null;
-        if (! $shop->is_open || ! $hours || $hours['closed'] || ! $service->is_active || $service->duration <= 0) {
+        $duration = (int) $services->sum('duration');
+        if (! $shop->is_open || ! $hours || $hours['closed'] || $services->isEmpty() || $duration <= 0
+            || $services->contains(fn (Service $service) => ! $service->is_active || $service->duration <= 0)) {
             return [];
         }
 
-        $barbers = $this->barbers($shop, $service, $barberId);
+        $barbers = $this->barbers($shop, $services, $barberId);
         $barbers->load('workingHours');
         $start = $day->setTimeFromTimeString($hours['open']);
         $close = $day->setTimeFromTimeString($hours['close']);
@@ -50,7 +54,7 @@ class BookingAvailability
         $slots = [];
 
         for ($time = $start; $time->lt($close); $time = $time->addMinutes(40)) {
-            $end = $time->addMinutes($service->duration);
+            $end = $time->addMinutes($duration);
             if ($end->gt($close) || $time->lte(CarbonImmutable::now($shop->timezone))) {
                 continue;
             }

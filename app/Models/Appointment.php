@@ -47,8 +47,18 @@ class Appointment extends Model
         return $this->belongsTo(Service::class);
     }
 
+    public function services()
+    {
+        return $this->belongsToMany(Service::class, 'appointment_service')->withTrashed();
+    }
+
     public function payment()
     {
         return $this->hasOne(Payment::class);
+    }
+
+    public function checkout()
+    {
+        return $this->hasOne(AppointmentCheckout::class);
     }
 }

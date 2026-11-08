@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Group, Home, Scissor } from '@iconoir/vue';
 import { Link } from '@inertiajs/vue3';
+import { CalendarDays, Package } from 'lucide-vue-next';
 import AppLogo from '@/components/AppLogo.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
@@ -26,6 +27,11 @@ const mainNavItems: NavItem[] = [
         icon: Home,
     },
     {
+        title: 'Agendamentos',
+        href: '/schedule',
+        icon: CalendarDays,
+    },
+    {
         title: 'Barbeiros',
         href: '/barbers',
         icon: Group,
@@ -41,6 +47,12 @@ const mainNavItems: NavItem[] = [
         title: 'Serviços',
         href: '/services',
         icon: Scissor,
+        requiresAdmin: true,
+    },
+    {
+        title: 'Produtos',
+        href: '/products',
+        icon: Package,
         requiresAdmin: true,
     },
 ];
