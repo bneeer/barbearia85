@@ -11,7 +11,9 @@ use App\Models\Product;
 use App\Models\Scopes\BarbershopScope;
 use App\Models\Service;
 use App\Models\User;
+use App\Rules\InternationalPhone;
 use App\Services\BookingAvailability;
+use App\Support\PhoneNumber;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -97,7 +99,7 @@ class ScheduleController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
-            'phone' => ['required', 'string', 'max:30', 'regex:/^\+?(?=(?:\D*\d){10,15}\D*$)[\d\s().-]+$/'],
+            'phone' => ['required', 'string', 'max:64', new InternationalPhone],
             'service_ids' => ['nullable', 'array', 'min:1', 'distinct'],
             'service_ids.*' => ['required', 'integer', 'distinct'],
             'service_id' => ['required_without:service_ids', 'integer'],
@@ -106,7 +108,8 @@ class ScheduleController extends Controller
             'time' => ['required', 'date_format:H:i'],
             'selected_duration' => ['nullable', 'integer', 'min:1', 'max:1440'],
             'notes' => ['nullable', 'string', 'max:5000'],
-        ], ['phone.regex' => 'Informe um telefone válido com DDD.']);
+        ]);
+        $data['phone'] = PhoneNumber::normalize($data['phone']);
         if (! $shop->is_open) {
             throw ValidationException::withMessages([
                 'barbershop_id' => 'Esta unidade está fechada e não aceita agendamentos.',

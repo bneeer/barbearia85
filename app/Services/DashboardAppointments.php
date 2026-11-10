@@ -618,6 +618,7 @@ class DashboardAppointments
                         'name' => $item['name'],
                         'counts' => array_fill_keys($dates, 0),
                         'scheduled_counts' => array_fill_keys($dates, 0),
+                        ...($viewer->isAdmin() ? ['revenue_cents' => 0] : []),
                     ];
                 }
                 if ($appointment->checkout) {
@@ -625,6 +626,13 @@ class DashboardAppointments
                 }
                 $field = $appointment->status === 'scheduled' ? 'scheduled_counts' : 'counts';
                 $series[$id][$field][$day]++;
+                if ($viewer->isAdmin() && $appointment->status === 'completed') {
+                    if (! $appointment->checkout) {
+                        $series[$id]['revenue_cents'] = null;
+                    } elseif ($series[$id]['revenue_cents'] !== null) {
+                        $series[$id]['revenue_cents'] += $item['price_cents'];
+                    }
+                }
             }
         }
 
@@ -637,6 +645,7 @@ class DashboardAppointments
                 'name' => $service['name'],
                 'counts' => array_values($service['counts']),
                 'scheduled_counts' => array_values($service['scheduled_counts']),
+                ...($viewer->isAdmin() ? ['revenue_cents' => $service['revenue_cents']] : []),
             ])->values()->all(),
         ];
     }

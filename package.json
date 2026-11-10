@@ -10,7 +10,9 @@
         "format:check": "prettier --check resources/",
         "lint": "eslint . --fix",
         "lint:check": "eslint .",
-        "types:check": "vue-tsc --noEmit"
+        "types:check": "vue-tsc --noEmit",
+        "test:phone": "node --experimental-strip-types --test tests/frontend/phone.test.mjs",
+        "test:booking": "node --experimental-strip-types --test tests/frontend/booking.test.mjs tests/frontend/booking-stepper.test.mjs"
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",
@@ -49,6 +51,7 @@
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "laravel-vite-plugin": "^3.0.0",
+        "libphonenumber-js": "^1.12.0",
         "lucide-vue-next": "^0.468.0",
         "luxon": "^3.7.2",
         "reka-ui": "^2.6.1",

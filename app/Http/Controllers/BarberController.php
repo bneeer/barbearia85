@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Barbershop;
 use App\Models\Service;
 use App\Models\User;
+use App\Rules\InternationalPhone;
 use App\Support\BarberPhoto;
+use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -40,11 +42,11 @@ class BarberController extends Controller
 
     private function validatedData(Request $request, ?User $barber = null): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($barber?->id)],
             'password' => [$barber ? 'sometimes' : 'required', 'string', 'min:6'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:64', new InternationalPhone],
             'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'service_ids' => ['nullable', 'array'],
             'service_ids.*' => ['required', 'integer', 'distinct', Rule::exists('services', 'id')
@@ -52,6 +54,12 @@ class BarberController extends Controller
             'barbershop_ids' => ['sometimes', 'array'],
             'barbershop_ids.*' => ['required', 'integer', 'distinct', Rule::exists('barbershops', 'id')],
         ]);
+
+        if (isset($data['phone'])) {
+            $data['phone'] = PhoneNumber::normalize($data['phone']);
+        }
+
+        return $data;
     }
 
     public function index(Request $request)

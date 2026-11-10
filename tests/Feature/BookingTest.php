@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\WorkingHour;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -77,6 +78,209 @@ class BookingTest extends TestCase
     private function availability(array $data)
     {
         return $this->getJson('/agendar/disponibilidade?'.http_build_query($data));
+    }
+
+    private function independentItems(Barbershop $shop, array $items): array
+    {
+        return [
+            'name' => 'Cliente Teste', 'email' => 'cliente@example.com', 'phone' => '(11) 99999-9999',
+            'barbershop_id' => $shop->id, 'items' => $items,
+        ];
+    }
+
+    private function item(Service $service, User $barber, string $time = '09:00', string $date = '2026-11-09'): array
+    {
+        return ['service_id' => $service->id, 'barber_id' => $barber->id, 'date' => $date, 'time' => $time];
+    }
+
+    public function test_independent_services_need_no_common_barber_and_create_individual_calendar_events(): void
+    {
+        $shop = $this->shop();
+        $first = $this->service($shop, 40);
+        $second = $this->service($shop, 60);
+        $barberA = $this->barber($shop, $first);
+        $barberB = $this->barber($shop, $second);
+        foreach ([$first, $second] as $service) {
+            $this->availability($this->selection($shop, $service))->assertOk()->assertJsonCount(1, 'slots.0.barber_ids');
+        }
+        $response = $this->postJson('/agendar', $this->independentItems($shop, [
+            $this->item($first, $barberA),
+            $this->item($second, $barberB, '09:00', '2026-11-10'),
+        ]))->assertCreated()->assertJsonCount(2, 'appointments')
+            ->assertJsonPath('appointments.0.service.id', $first->id)
+            ->assertJsonPath('appointments.1.barber.id', $barberB->id)
+            ->assertJsonPath('appointments.0.starts_at', '2026-11-09T12:00:00+00:00')
+            ->assertJsonPath('appointments.1.ends_at', '2026-11-10T13:00:00+00:00');
+        $this->assertDatabaseCount('clients', 1);
+        $this->assertDatabaseCount('appointments', 2);
+        $this->assertDatabaseCount('appointment_service', 2);
+        $this->assertDatabaseCount('notifications', 4);
+        $this->assertSame(1, DB::table('appointments')->distinct()->count('client_id'));
+        foreach ($response->json('appointments') as $booking) {
+            $this->assertDatabaseHas('appointment_service', ['appointment_id' => $booking['id'], 'service_id' => $booking['service']['id']]);
+            $notification = Notification::where('appointment_id', $booking['id'])->where('type', 'whatsapp')->firstOrFail();
+            $this->assertSame('+5511999999999', $notification->payload['recipient']);
+            $this->assertSame($booking['service']['duration'], $notification->payload['duration']);
+            $this->assertSame('pending', $notification->status);
+        }
+
+        $admin = User::factory()->create(['role' => 'admin', 'barbershop_id' => $shop->id]);
+        $events = $this->actingAs($admin)->getJson('/schedule/events?'.http_build_query([
+            'barbershop_id' => $shop->id,
+            'start' => '2026-11-09T00:00:00-03:00', 'end' => '2026-11-11T00:00:00-03:00',
+        ]))->assertOk()->json();
+        $this->assertCount(2, $events);
+        foreach ($events as $event) {
+            $this->assertCount(1, $event['extendedProps']['services']);
+        }
+    }
+
+    public function test_independent_items_reject_customer_overlaps_even_with_different_barbers(): void
+    {
+        $shop = $this->shop();
+        $first = $this->service($shop, 80);
+        $second = $this->service($shop, 40);
+        $barberA = $this->barber($shop, $first);
+        $barberB = $this->barber($shop, $second);
+        foreach (['09:00', '09:40'] as $time) {
+            $this->postJson('/agendar', $this->independentItems($shop, [
+                $this->item($first, $barberA), $this->item($second, $barberB, $time),
+            ]))->assertUnprocessable()->assertJsonValidationErrors('items.1.time');
+        }
+        $this->assertDatabaseCount('appointments', 0);
+        $this->assertDatabaseCount('clients', 0);
+        $this->assertDatabaseCount('notifications', 0);
+        $this->postJson('/agendar', $this->independentItems($shop, [
+            $this->item($first, $barberA), $this->item($second, $barberB, '10:20'),
+        ]))->assertCreated();
+    }
+
+    public function test_same_barber_can_receive_adjacent_independent_services_with_individual_durations(): void
+    {
+        $shop = $this->shop();
+        $first = $this->service($shop, 40);
+        $second = $this->service($shop, 60);
+        $barber = $this->barber($shop, $first);
+        $barber->services()->attach($second);
+        $this->postJson('/agendar', $this->independentItems($shop, [
+            $this->item($first, $barber), $this->item($second, $barber, '09:40'),
+        ]))->assertCreated()
+            ->assertJsonPath('appointments.0.ends_at', '2026-11-09T12:40:00+00:00')
+            ->assertJsonPath('appointments.1.starts_at', '2026-11-09T12:40:00+00:00')
+            ->assertJsonPath('appointments.1.ends_at', '2026-11-09T13:40:00+00:00');
+    }
+
+    public function test_losing_one_slot_rejects_the_entire_batch_without_creating_a_client_or_notifications(): void
+    {
+        $shop = $this->shop();
+        $other = $this->shop('outra');
+        $first = $this->service($shop);
+        $second = $this->service($shop);
+        $barberA = $this->barber($shop, $first);
+        $barberB = $this->barber($shop, $second);
+        $this->availability($this->selection($shop, $second, $barberB))->assertOk();
+        $this->appointment($other, $second, $barberB, '2026-11-09 09:40', '2026-11-09 10:20');
+        $this->postJson('/agendar', $this->independentItems($shop, [
+            $this->item($first, $barberA), $this->item($second, $barberB, '09:40'),
+        ]))->assertUnprocessable()->assertJsonValidationErrors('items.1.time');
+        $this->assertDatabaseCount('appointments', 1);
+        $this->assertDatabaseCount('clients', 1);
+        $this->assertDatabaseCount('notifications', 0);
+        $this->assertDatabaseCount('appointment_service', 0);
+    }
+
+    public function test_independent_batch_validation_preserves_service_unit_and_date_constraints(): void
+    {
+        $shop = $this->shop();
+        $first = $this->service($shop);
+        $second = $this->service($shop);
+        $barberA = $this->barber($shop, $first);
+        $barberB = $this->barber($shop, $second);
+        $items = [$this->item($first, $barberA), $this->item($second, $barberB, '09:40')];
+        foreach ([
+            ['items' => []],
+            ['items' => [$items[0], $items[0]]],
+            ['items' => [$items[0], [...$items[1], 'barber_id' => $barberA->id]]],
+            ['items' => [$items[0], [...$items[1], 'date' => '2026-12-25']]],
+            ['items' => [$items[0], [...$items[1], 'date' => '2026-11-08']]],
+            ['service_ids' => [$first->id]],
+            ['service_id' => $first->id],
+            ['barber_id' => null],
+        ] as $invalid) {
+            $this->postJson('/agendar', [...$this->independentItems($shop, $items), ...$invalid])->assertUnprocessable();
+        }
+        $this->travel(2)->minutes();
+        $barberB->services()->detach($second);
+        $this->postJson('/agendar', $this->independentItems($shop, $items))->assertUnprocessable()->assertJsonValidationErrors('items.1.time');
+        $barberB->services()->attach($second);
+        $second->update(['is_active' => false]);
+        $this->postJson('/agendar', $this->independentItems($shop, $items))->assertUnprocessable()->assertJsonValidationErrors('items.1.service_id');
+        $second->update(['is_active' => true]);
+        $barberB->barbershops()->detach($shop);
+        $this->postJson('/agendar', $this->independentItems($shop, $items))->assertUnprocessable()->assertJsonValidationErrors('items.1.time');
+        $barberB->barbershops()->attach($shop);
+        $second->delete();
+        $this->postJson('/agendar', $this->independentItems($shop, $items))->assertUnprocessable()->assertJsonValidationErrors('items.1.service_id');
+        $this->assertDatabaseCount('clients', 0);
+        $this->assertDatabaseCount('appointments', 0);
+        $this->assertDatabaseCount('notifications', 0);
+    }
+
+    public function test_independent_items_respect_global_blocks_and_the_units_timezone(): void
+    {
+        $shop = $this->shop();
+        $shop->update(['timezone' => 'America/Los_Angeles']);
+        $first = $this->service($shop);
+        $second = $this->service($shop);
+        $barberA = $this->barber($shop, $first);
+        $barberB = $this->barber($shop, $second);
+        $block = BlockedTime::create([
+            'user_id' => $barberB->id,
+            'start_datetime' => CarbonImmutable::parse('2026-11-09 09:40', $shop->timezone)->utc(),
+            'end_datetime' => CarbonImmutable::parse('2026-11-09 10:20', $shop->timezone)->utc(),
+        ]);
+        $data = $this->independentItems($shop, [
+            $this->item($first, $barberA), $this->item($second, $barberB, '09:40'),
+        ]);
+        $this->postJson('/agendar', $data)->assertUnprocessable()->assertJsonValidationErrors('items.1.time');
+        $this->assertDatabaseCount('clients', 0);
+        $this->assertDatabaseCount('appointments', 0);
+        $block->delete();
+        $this->postJson('/agendar', $data)->assertCreated()
+            ->assertJsonPath('appointments.0.starts_at', '2026-11-09T17:00:00+00:00')
+            ->assertJsonPath('appointments.1.starts_at', '2026-11-09T17:40:00+00:00');
+        $this->assertSame('2026-11-09T09:00:00-08:00', Notification::firstOrFail()->payload['starts_at']);
+    }
+
+    public function test_notification_failure_rolls_back_every_created_item(): void
+    {
+        $shop = $this->shop();
+        $first = $this->service($shop);
+        $second = $this->service($shop);
+        $barberA = $this->barber($shop, $first);
+        $barberB = $this->barber($shop, $second);
+        $this->withoutExceptionHandling();
+        $originalDispatcher = Notification::getEventDispatcher();
+        Notification::setEventDispatcher(clone $originalDispatcher);
+        Notification::creating(function ($notification) {
+            if ($notification->type === 'email' && Notification::count() === 2) {
+                throw new \RuntimeException('Synthetic notification failure');
+            }
+        });
+        try {
+            $this->postJson('/agendar', $this->independentItems($shop, [
+                $this->item($first, $barberA), $this->item($second, $barberB, '09:40'),
+            ]));
+            $this->fail('The notification failure must propagate.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Synthetic notification failure', $exception->getMessage());
+        } finally {
+            Notification::setEventDispatcher($originalDispatcher);
+        }
+        $this->assertDatabaseCount('clients', 0);
+        $this->assertDatabaseCount('appointments', 0);
+        $this->assertDatabaseCount('appointment_service', 0);
+        $this->assertDatabaseCount('notifications', 0);
     }
 
     private function appointment(Barbershop $shop, Service $service, User $barber, string $start, string $end, string $status = 'scheduled'): Appointment
@@ -206,13 +410,14 @@ class BookingTest extends TestCase
         $this->assertSame('2026-11-09 12:40:00', $appointment->end_time->format('Y-m-d H:i:s'));
         $this->assertSame('scheduled', $appointment->status);
         $this->assertDatabaseCount('clients', 1);
+        $this->assertDatabaseHas('clients', ['id' => $appointment->client_id, 'phone' => '+5511999999999']);
         $this->assertDatabaseCount('notifications', 2);
         foreach (Notification::all() as $notification) {
             $this->assertSame($appointment->id, $notification->appointment_id);
             $this->assertSame('pending', $notification->status);
             $this->assertNull($notification->sent_at);
             $this->assertSame('2026-11-09T09:00:00-03:00', $notification->payload['starts_at']);
-            $this->assertSame($notification->type === 'email' ? 'cliente@example.com' : '(11) 99999-9999', $notification->payload['recipient']);
+            $this->assertSame($notification->type === 'email' ? 'cliente@example.com' : '+5511999999999', $notification->payload['recipient']);
         }
 
         $this->postJson('/agendar', $this->booking($shop, $service, $barber))
@@ -220,6 +425,33 @@ class BookingTest extends TestCase
         $this->assertDatabaseCount('appointments', 1);
         $this->assertDatabaseCount('clients', 1);
         $this->assertDatabaseCount('notifications', 2);
+    }
+
+    public function test_international_phone_is_saved_in_the_client_and_notification_recipient(): void
+    {
+        $shop = $this->shop();
+        $service = $this->service($shop);
+        $barber = $this->barber($shop, $service);
+        $this->postJson('/agendar', $this->booking($shop, $service, $barber, [
+            'phone' => '+290 21234',
+        ]))->assertCreated();
+        $this->assertDatabaseHas('clients', ['phone' => '+29021234']);
+        $this->assertSame('+29021234', Notification::where('type', 'whatsapp')->firstOrFail()->payload['recipient']);
+    }
+
+    public function test_invalid_international_phone_cannot_create_a_client_or_notification(): void
+    {
+        $shop = $this->shop();
+        $service = $this->service($shop);
+        $barber = $this->barber($shop, $service);
+        foreach (['+999123456789', '+1202555012345678', '+5511999999999 ext 1'] as $phone) {
+            $this->postJson('/agendar', $this->booking($shop, $service, $barber, [
+                'phone' => $phone,
+            ]))->assertUnprocessable()->assertJsonValidationErrors('phone');
+        }
+        $this->assertDatabaseCount('clients', 0);
+        $this->assertDatabaseCount('appointments', 0);
+        $this->assertDatabaseCount('notifications', 0);
     }
 
     public function test_booking_combines_services_and_uses_their_total_duration_and_price(): void

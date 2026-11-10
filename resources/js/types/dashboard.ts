@@ -46,6 +46,7 @@ export type ServicesTimeline = {
         name: string;
         counts: number[];
         scheduled_counts: number[];
+        revenue_cents?: number | null;
     }[];
 };
 

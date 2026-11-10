@@ -2,6 +2,7 @@
 import { ArrowLeft, FloppyDisk } from '@iconoir/vue';
 import { Link, useForm } from '@inertiajs/vue3';
 import InputError from '@/components/InputError.vue';
+import PhoneInput from '@/components/PhoneInput.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -83,12 +84,9 @@ function submit() {
         </div>
         <div class="grid gap-2">
             <Label for="phone">Telefone</Label>
-            <Input
+            <PhoneInput
                 id="phone"
                 v-model="form.phone"
-                type="tel"
-                maxlength="30"
-                autocomplete="tel"
             />
             <InputError :message="form.errors.phone" />
         </div>

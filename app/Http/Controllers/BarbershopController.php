@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Barbershop;
 use App\Models\BarbershopPhoto;
 use App\Models\User;
+use App\Rules\InternationalPhone;
+use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -56,7 +58,7 @@ class BarbershopController extends Controller
             'address' => ['required', 'string', 'max:255'],
             'zip_code' => ['required', 'string', 'regex:/^\d{5}-?\d{3}$/'],
             'phones' => ['sometimes', 'array'],
-            'phones.*' => ['required', 'string', 'max:30', 'distinct'],
+            'phones.*' => ['required', 'string', 'max:64', 'distinct', new InternationalPhone],
             'is_open' => ['required', 'boolean'],
             'opening_hours' => ['required', 'array:'.implode(',', $dayKeys)],
             'barber_ids' => ['sometimes', 'array'],
@@ -73,6 +75,20 @@ class BarbershopController extends Controller
         $data = $request->validate($rules, [
             'zip_code.regex' => 'Informe um CEP válido no formato 00000-000.',
         ]);
+
+        $normalizedPhones = [];
+        foreach ($data['phones'] ?? [] as $index => $phone) {
+            $normalized = PhoneNumber::normalize($phone);
+            if (in_array($normalized, $normalizedPhones, true)) {
+                throw ValidationException::withMessages([
+                    "phones.$index" => 'Este telefone já foi informado.',
+                ]);
+            }
+            $normalizedPhones[] = $normalized;
+        }
+        if (array_key_exists('phones', $data)) {
+            $data['phones'] = $normalizedPhones;
+        }
 
         foreach ($dayKeys as $day) {
             $hours = $data['opening_hours'][$day];

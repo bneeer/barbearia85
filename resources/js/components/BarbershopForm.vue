@@ -4,6 +4,7 @@ import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
 import { ref } from 'vue';
 import InputError from '@/components/InputError.vue';
+import PhoneInput from '@/components/PhoneInput.vue';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +49,8 @@ const form = useForm({
     barber_ids: props.barberIds,
 });
 const photosForm = useForm({ photos: [] as File[] });
+const phoneKeys = ref(form.phones.map((_, index) => index));
+let nextPhoneKey = phoneKeys.value.length;
 
 function openingHourError(
     day: keyof OpeningHours,
@@ -66,13 +69,15 @@ function phoneError(index: number): string | undefined {
 
 function addPhone() {
     form.phones.push('');
+    phoneKeys.value.push(nextPhoneKey++);
 }
 
 function removePhone(index: number) {
     form.phones.splice(index, 1);
+    phoneKeys.value.splice(index, 1);
 
     if (!form.phones.length) {
-        form.phones.push('');
+        addPhone();
     }
 }
 
@@ -231,20 +236,16 @@ function removePhoto(photoId: number) {
                     <legend class="text-sm font-medium">Telefones</legend>
                     <div
                         v-for="(phone, index) in form.phones"
-                        :key="index"
+                        :key="phoneKeys[index]"
                         class="flex items-start gap-2"
                     >
                         <div class="grid flex-1 gap-2">
                             <Label :for="`phone-${index}`">
                                 Telefone {{ index + 1 }}
                             </Label>
-                            <Input
+                            <PhoneInput
                                 :id="`phone-${index}`"
                                 v-model="form.phones[index]"
-                                type="tel"
-                                maxlength="30"
-                                autocomplete="tel"
-                                placeholder="(11) 99999-9999"
                             />
                             <InputError :message="phoneError(index)" />
                         </div>

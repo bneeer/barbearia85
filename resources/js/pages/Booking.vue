@@ -2,10 +2,12 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import BookingGallery from '@/components/BookingGallery.vue';
+import PhoneInput from '@/components/PhoneInput.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { DISPLAY_TIMEZONE } from '@/lib/dateTime';
+import { endTime, overlapsDraft, reconcileDrafts } from '@/lib/booking';
+import type { BookingDraft } from '@/lib/booking';
 
 type Service = {
     id: number;
@@ -34,6 +36,14 @@ type Shop = {
 };
 type Slot = { time: string; barber_ids: number[] };
 type ApiError = { message?: string; errors?: Record<string, string[]> };
+type ConfirmedAppointment = {
+    id: number;
+    service: Pick<Service, 'id' | 'name' | 'duration' | 'price'>;
+    barber: { id: number; name: string };
+    starts_at: string;
+    ends_at: string;
+    timezone: string;
+};
 
 const props = defineProps<{ barbershops: Shop[]; csrfToken: string }>();
 const labels = [
@@ -55,10 +65,10 @@ const titles = [
 const copies = [
     'Informe seus dados para identificar seu agendamento.',
     'Escolha uma unidade e conheça o espaço pelas fotos. Deslize para ver mais opções.',
-    'Selecione um ou mais serviços para combinar na mesma visita.',
+    'Selecione seus serviços. Cada um terá seu próprio profissional e horário, inclusive em dias diferentes.',
     'Escolha seu profissional favorito ou veja os horários de toda a equipe.',
     'Escolha uma data e um horário disponível.',
-    'Confira os detalhes antes de reservar. O horário será validado novamente na confirmação.',
+    'Confira cada atendimento. Todos serão confirmados juntos, após uma nova validação dos horários.',
 ];
 const ctas = [
     'Escolher unidade',
@@ -74,16 +84,65 @@ const email = ref('');
 const phone = ref('');
 const shopId = ref<number | null>(null);
 const serviceIds = ref<number[]>([]);
-const preference = ref<number | 'any' | null>(null);
-const date = ref('');
-const time = ref('');
-const barberId = ref<number | null>(null);
-const slots = ref<Slot[]>([]);
+const drafts = ref<BookingDraft[]>([]);
+const activeServiceId = ref<number | null>(null);
+const activeDraft = computed(() =>
+    drafts.value.find((item) => item.service_id === activeServiceId.value),
+);
+const preference = computed({
+    get: () => activeDraft.value?.preference ?? null,
+    set: (value) => {
+        if (activeDraft.value && activeDraft.value.preference !== value) {
+            activeDraft.value.preference = value;
+            activeDraft.value.time = '';
+            activeDraft.value.barber_id = null;
+        }
+    },
+});
+const date = computed({
+    get: () => activeDraft.value?.date ?? '',
+    set: (value) => {
+        if (activeDraft.value && activeDraft.value.date !== value) {
+            activeDraft.value.date = value;
+            activeDraft.value.time = '';
+            activeDraft.value.barber_id = null;
+        }
+    },
+});
+const time = computed({
+    get: () => activeDraft.value?.time ?? '',
+    set: (value) => {
+        if (activeDraft.value) {
+            activeDraft.value.time = value;
+        }
+    },
+});
+const barberId = computed({
+    get: () => activeDraft.value?.barber_id ?? null,
+    set: (value) => {
+        if (activeDraft.value) {
+            activeDraft.value.barber_id = value;
+        }
+    },
+});
+const fetchedSlots = ref<Slot[]>([]);
+const slots = computed(() =>
+    fetchedSlots.value.filter(
+        (slot) =>
+            !hasOverlap(
+                {
+                    date: date.value,
+                    time: slot.time,
+                },
+                activeServiceId.value,
+            ),
+    ),
+);
 const loading = ref(false);
 const submitting = ref(false);
 const error = ref('');
 const fieldErrors = ref<Record<string, string[]>>({});
-const confirmationId = ref<number | null>(null);
+const confirmedAppointments = ref<ConfirmedAppointment[]>([]);
 const heading = ref<HTMLElement | null>(null);
 const unitCarousel = ref<HTMLElement | null>(null);
 const dateCarousel = ref<HTMLElement | null>(null);
@@ -98,6 +157,20 @@ const selectedServices = computed(
             serviceIds.value.includes(item.id),
         ) ?? [],
 );
+const activeService = computed(() =>
+    selectedServices.value.find((item) => item.id === activeServiceId.value),
+);
+const allComplete = computed(
+    () => drafts.value.length > 0 && drafts.value.every(isComplete),
+);
+const nextLabel = computed(() =>
+    step.value === 4 &&
+    drafts.value.some((item) => item !== activeDraft.value && !isComplete(item))
+        ? 'Definir próximo serviço'
+        : step.value === 4
+          ? 'Revisar agendamentos'
+          : ctas[step.value],
+);
 const totalDuration = computed(() =>
     selectedServices.value.reduce((total, item) => total + item.duration, 0),
 );
@@ -111,8 +184,8 @@ const eligibleBarbers = computed(
     () =>
         shop.value?.barbers.filter(
             (barber) =>
-                serviceIds.value.length > 0 &&
-                serviceIds.value.every((id) => barber.service_ids.includes(id)),
+                activeServiceId.value !== null &&
+                barber.service_ids.includes(activeServiceId.value),
         ) ?? [],
 );
 const preferenceLabel = computed(() =>
@@ -170,46 +243,24 @@ const periods = computed(() => [
         slots: slots.value.filter((slot) => slot.time >= '18:00'),
     },
 ]);
-const formattedDate = computed(() =>
-    date.value
-        ? new Intl.DateTimeFormat('pt-BR', {
-              dateStyle: 'full',
-              timeZone: 'UTC',
-          }).format(new Date(`${date.value}T12:00:00Z`))
-        : '',
-);
-const calendarEvent = computed(() => {
-    if (
-        !confirmationId.value ||
-        !shop.value ||
-        !barber.value ||
-        !date.value ||
-        !time.value ||
-        totalDuration.value <= 0
-    ) {
-        return null;
-    }
-
-    const start = zonedDateTimeToUtc(date.value, time.value, DISPLAY_TIMEZONE);
-    const end = new Date(start.getTime() + totalDuration.value * 60_000);
-    const serviceNames = selectedServices.value
-        .map((item) => item.name)
-        .join(' + ');
-    const title = `${serviceNames} · ${shop.value.name}`;
+function calendarEvent(appointment: ConfirmedAppointment) {
+    const start = new Date(appointment.starts_at);
+    const end = new Date(appointment.ends_at);
+    const title = `${appointment.service.name} · ${shop.value?.name}`;
     const description = [
-        `Agendamento #${confirmationId.value}`,
-        `Serviços: ${serviceNames}`,
-        `Duração: ${totalDuration.value} min`,
-        `Barbeiro: ${barber.value.name}`,
-        `Unidade: ${shop.value.name}`,
-        ...shop.value.phones.map((contact) => `Contato: ${contact}`),
+        `Agendamento #${appointment.id}`,
+        `Serviço: ${appointment.service.name}`,
+        `Duração: ${appointment.service.duration} min`,
+        `Barbeiro: ${appointment.barber.name}`,
+        `Unidade: ${shop.value?.name}`,
+        ...(shop.value?.phones ?? []).map((contact) => `Contato: ${contact}`),
     ].join('\n');
     const details = {
         title,
         start,
         end,
         description,
-        location: shop.value.address ?? '',
+        location: shop.value?.address ?? '',
     };
     const googleParams = new URLSearchParams({
         action: 'TEMPLATE',
@@ -217,7 +268,7 @@ const calendarEvent = computed(() => {
         dates: `${calendarDateTime(start)}/${calendarDateTime(end)}`,
         details: details.description,
         location: details.location,
-        ctz: DISPLAY_TIMEZONE,
+        ctz: appointment.timezone,
     });
     const outlookParams = new URLSearchParams({
         path: '/calendar/action/compose',
@@ -235,7 +286,7 @@ const calendarEvent = computed(() => {
         'CALSCALE:GREGORIAN',
         'METHOD:PUBLISH',
         'BEGIN:VEVENT',
-        `UID:appointment-${confirmationId.value}@barbearia85`,
+        `UID:appointment-${appointment.id}@barbearia85`,
         `DTSTAMP:${calendarDateTime(new Date())}`,
         `DTSTART:${calendarDateTime(start)}`,
         `DTEND:${calendarDateTime(end)}`,
@@ -253,7 +304,7 @@ const calendarEvent = computed(() => {
         outlookUrl: `https://outlook.live.com/calendar/0/deeplink/compose?${outlookParams}`,
         ics,
     };
-});
+}
 const canContinue = computed(() => {
     if (loading.value || submitting.value) {
         return false;
@@ -274,13 +325,7 @@ const canContinue = computed(() => {
                     slot.barber_ids.includes(barberId.value),
             ),
         ),
-        Boolean(
-            shop.value &&
-            serviceIds.value.length > 0 &&
-            barber.value &&
-            date.value &&
-            time.value,
-        ),
+        Boolean(shop.value && allComplete.value),
     ][step.value];
 });
 const money = (value: string) =>
@@ -288,46 +333,6 @@ const money = (value: string) =>
         style: 'currency',
         currency: 'BRL',
     }).format(Number(value));
-function zonedDateTimeToUtc(date: string, time: string, timezone: string) {
-    const [year, month, day] = date.split('-').map(Number);
-    const [hour, minute] = time.split(':').map(Number);
-    const target = Date.UTC(year, month - 1, day, hour, minute);
-    const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-    });
-    let timestamp = target;
-
-    for (let attempt = 0; attempt < 3; attempt++) {
-        const parts = Object.fromEntries(
-            formatter
-                .formatToParts(new Date(timestamp))
-                .filter((part) => part.type !== 'literal')
-                .map((part) => [part.type, Number(part.value)]),
-        );
-        const represented = Date.UTC(
-            parts.year,
-            parts.month - 1,
-            parts.day,
-            parts.hour,
-            parts.minute,
-        );
-        const adjustment = target - represented;
-
-        timestamp += adjustment;
-
-        if (adjustment === 0) {
-            break;
-        }
-    }
-
-    return new Date(timestamp);
-}
 function calendarDateTime(value: Date) {
     return value
         .toISOString()
@@ -365,18 +370,14 @@ function foldIcsLine(line: string) {
 
     return folded.join('\r\n ');
 }
-function saveAppleCalendar() {
-    if (!calendarEvent.value) {
-        return;
-    }
-
-    const blob = new Blob([calendarEvent.value.ics], {
+function saveAppleCalendar(appointment: ConfirmedAppointment) {
+    const blob = new Blob([calendarEvent(appointment).ics], {
         type: 'text/calendar;charset=utf-8',
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `agendamento-barbearia85-${confirmationId.value}.ics`;
+    link.download = `agendamento-barbearia85-${appointment.id}.ics`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -387,58 +388,48 @@ const selectedClass = (selected: boolean) =>
 
 watch(shopId, () => {
     serviceIds.value = [];
-    preference.value = null;
-    date.value = '';
-    time.value = '';
-    barberId.value = null;
+    drafts.value = [];
+    activeServiceId.value = null;
+    fetchedSlots.value = [];
 });
 watch(
     () => serviceIds.value.join(','),
     () => {
-        preference.value = null;
-        time.value = '';
-        barberId.value = null;
-    },
-);
-watch(preference, () => {
-    time.value = '';
-    barberId.value = null;
-});
-watch(date, () => {
-    time.value = '';
-    barberId.value = null;
-});
-watch(step, () => heading.value?.focus(), { flush: 'post' });
-watch(
-    [step, date, shopId, () => serviceIds.value.join(','), preference],
-    () => {
-        if (step.value === 4 && date.value) {
-            void loadAvailability();
-        } else {
-            availabilityRequest?.abort();
-            loading.value = false;
+        drafts.value = reconcileDrafts(serviceIds.value, drafts.value);
+
+        if (!serviceIds.value.includes(activeServiceId.value ?? -1)) {
+            activeServiceId.value = serviceIds.value[0] ?? null;
         }
     },
 );
+watch(step, () => heading.value?.focus(), { flush: 'post' });
+watch([step, date, shopId, activeServiceId, preference], () => {
+    if (step.value === 4 && date.value) {
+        void loadAvailability();
+    } else {
+        availabilityRequest?.abort();
+        fetchedSlots.value = [];
+        loading.value = false;
+    }
+});
 onBeforeUnmount(() => availabilityRequest?.abort());
 
 async function loadAvailability() {
     availabilityRequest?.abort();
     const request = new AbortController();
     availabilityRequest = request;
-    slots.value = [];
-    time.value = '';
-    barberId.value = null;
+    fetchedSlots.value = [];
     loading.value = true;
     error.value = '';
     fieldErrors.value = {};
     const query = new URLSearchParams({
         barbershop_id: String(shopId.value),
+        service_id: String(activeServiceId.value),
         date: date.value,
     });
-    serviceIds.value.forEach((id, index) =>
-        query.set(`service_ids[${index}]`, String(id)),
-    );
+    const draft = activeDraft.value;
+    const requestedDate = date.value;
+    const requestedPreference = preference.value;
 
     if (typeof preference.value === 'number') {
         query.set('barber_id', String(preference.value));
@@ -462,7 +453,10 @@ async function loadAvailability() {
 
             if (response.status === 422) {
                 const body: ApiError = await response.json();
-                fieldErrors.value = body.errors ?? {};
+
+                if (!request.signal.aborted) {
+                    fieldErrors.value = body.errors ?? {};
+                }
             }
 
             return;
@@ -470,8 +464,26 @@ async function loadAvailability() {
 
         const body: { slots: Slot[] } = await response.json();
 
-        if (!request.signal.aborted) {
-            slots.value = body.slots;
+        if (
+            !request.signal.aborted &&
+            draft === activeDraft.value &&
+            requestedDate === date.value &&
+            requestedPreference === preference.value
+        ) {
+            fetchedSlots.value = body.slots;
+
+            if (
+                draft?.time &&
+                !slots.value.some(
+                    (slot) =>
+                        slot.time === draft.time &&
+                        draft.barber_id !== null &&
+                        slot.barber_ids.includes(draft.barber_id),
+                )
+            ) {
+                draft.time = '';
+                draft.barber_id = null;
+            }
         }
     } catch (cause) {
         if (request.signal.aborted) {
@@ -503,6 +515,78 @@ function selectTime(slot: Slot) {
         typeof preference.value === 'number' ? preference.value : null;
 }
 
+function hasOverlap(
+    candidate: { date: string; time: string },
+    serviceId: number | null,
+): boolean {
+    const duration =
+        selectedServices.value.find((item) => item.id === serviceId)
+            ?.duration ?? 0;
+
+    return drafts.value.some(
+        (other) =>
+            other.service_id !== serviceId &&
+            overlapsDraft(
+                candidate,
+                duration,
+                other,
+                selectedServices.value.find(
+                    (item) => item.id === other.service_id,
+                )?.duration ?? 0,
+            ),
+    );
+}
+
+function isComplete(item: BookingDraft): boolean {
+    return Boolean(
+        item.preference !== null &&
+        item.date &&
+        item.time &&
+        item.barber_id &&
+        shop.value?.barbers.some(
+            (barber) =>
+                barber.id === item.barber_id &&
+                barber.service_ids.includes(item.service_id),
+        ) &&
+        !hasOverlap(item, item.service_id),
+    );
+}
+
+function editItem(serviceId: number) {
+    activeServiceId.value = serviceId;
+    error.value = '';
+    fieldErrors.value = {};
+    step.value = 3;
+}
+
+function draftDetails(serviceId: number) {
+    const draft = drafts.value.find((item) => item.service_id === serviceId);
+    const service = selectedServices.value.find(
+        (item) => item.id === serviceId,
+    );
+    const professional = shop.value?.barbers.find(
+        (item) => item.id === draft?.barber_id,
+    );
+
+    return draft?.date && draft.time && service
+        ? `${draft.date.split('-').reverse().join('/')} · ${draft.time}–${endTime(draft.time, service.duration)} · ${professional?.name ?? 'Escolha o barbeiro'}`
+        : 'Defina o profissional, a data e o horário';
+}
+
+function confirmedDate(appointment: ConfirmedAppointment) {
+    const formatter = new Intl.DateTimeFormat('pt-BR', {
+        dateStyle: 'full',
+        timeStyle: 'short',
+        timeZone: appointment.timezone,
+    });
+    const end = new Intl.DateTimeFormat('pt-BR', {
+        timeStyle: 'short',
+        timeZone: appointment.timezone,
+    }).format(new Date(appointment.ends_at));
+
+    return `${formatter.format(new Date(appointment.starts_at))} até ${end}`;
+}
+
 async function next() {
     if (!canContinue.value) {
         return;
@@ -510,6 +594,18 @@ async function next() {
 
     error.value = '';
     fieldErrors.value = {};
+
+    if (step.value === 4) {
+        const remaining = drafts.value.find((item) => !isComplete(item));
+
+        if (remaining) {
+            editItem(remaining.service_id);
+        } else {
+            step.value = 5;
+        }
+
+        return;
+    }
 
     if (step.value < 5) {
         step.value++;
@@ -532,10 +628,14 @@ async function next() {
                 email: email.value.trim(),
                 phone: phone.value.trim(),
                 barbershop_id: shopId.value,
-                service_ids: serviceIds.value,
-                barber_id: barberId.value,
-                date: date.value,
-                time: time.value,
+                items: drafts.value.map(
+                    ({ service_id, barber_id, date, time }) => ({
+                        service_id,
+                        barber_id,
+                        date,
+                        time,
+                    }),
+                ),
             }),
         });
 
@@ -544,12 +644,16 @@ async function next() {
                 const body: ApiError = await response.json();
                 fieldErrors.value = body.errors ?? {};
                 error.value =
-                    'Revise os dados indicados abaixo. A reserva não foi confirmada.';
+                    'Nenhuma reserva foi confirmada. Revise os dados e os serviços indicados abaixo.';
 
-                if (fieldErrors.value.time) {
-                    time.value = '';
-                    barberId.value = null;
-                    slots.value = [];
+                for (const field of Object.keys(fieldErrors.value)) {
+                    const match = /^items\.(\d+)\./.exec(field);
+                    const draft = match ? drafts.value[Number(match[1])] : null;
+
+                    if (draft) {
+                        draft.time = '';
+                        draft.barber_id = null;
+                    }
                 }
             } else {
                 error.value =
@@ -563,8 +667,9 @@ async function next() {
             return;
         }
 
-        const body: { id: number } = await response.json();
-        confirmationId.value = body.id;
+        const body: { appointments: ConfirmedAppointment[] } =
+            await response.json();
+        confirmedAppointments.value = body.appointments;
     } catch (cause) {
         if (!(cause instanceof Error)) {
             throw cause;
@@ -605,31 +710,20 @@ function back() {
             >
         </header>
         <main class="mx-auto max-w-6xl px-5 pb-12" aria-label="Agendar Horário">
-            <template v-if="confirmationId">
+            <template v-if="confirmedAppointments.length">
                 <section
                     class="mx-auto max-w-2xl rounded-2xl border border-primary bg-primary/5 p-6 sm:p-10"
                     role="status"
                 >
                     <p class="mb-3 font-semibold text-primary">
-                        Horário reservado · #{{ confirmationId }}
+                        {{ confirmedAppointments.length }} atendimento(s)
+                        confirmado(s)
                     </p>
                     <h1 class="text-3xl font-bold">
                         Seu próximo cuidado já tem hora marcada!
                     </h1>
                     <p class="mt-4 text-muted-foreground">
                         {{ name }}, esperamos você em {{ shop?.name }}.
-                    </p>
-                    <p class="mt-4 font-semibold">
-                        {{ formattedDate }}, às {{ time }}
-                    </p>
-                    <p class="mt-2">
-                        {{
-                            selectedServices
-                                .map((item) => item.name)
-                                .join(' + ')
-                        }}
-                        com {{ barber?.name }} · {{ totalDuration }} min ·
-                        {{ money(String(totalPrice)) }}
                     </p>
                     <p class="mt-2">{{ shop?.address }}</p>
                     <p
@@ -643,16 +737,32 @@ function back() {
                         Guarde os detalhes da sua reserva. Em caso de
                         imprevisto, entre em contato com a unidade.
                     </p>
-                    <div class="mt-6 space-y-3">
-                        <h2 class="font-semibold">Adicionar ao calendário</h2>
+                    <div
+                        v-for="appointment in confirmedAppointments"
+                        :key="appointment.id"
+                        class="mt-6 space-y-3 rounded-xl border p-4"
+                    >
+                        <h2 class="font-semibold">
+                            {{ appointment.service.name }} · #{{
+                                appointment.id
+                            }}
+                        </h2>
+                        <p>{{ confirmedDate(appointment) }}</p>
+                        <p>
+                            {{ appointment.barber.name }} ·
+                            {{ appointment.service.duration }} min ·
+                            {{ money(appointment.service.price) }}
+                        </p>
+                        <p class="text-sm text-muted-foreground">
+                            {{ appointment.timezone }}
+                        </p>
+                        <h3 class="font-semibold">
+                            Adicionar este atendimento ao calendário
+                        </h3>
                         <div class="flex flex-wrap gap-3">
-                            <Button
-                                v-if="calendarEvent"
-                                as-child
-                                variant="outline"
-                            >
+                            <Button as-child variant="outline">
                                 <a
-                                    :href="calendarEvent.googleUrl"
+                                    :href="calendarEvent(appointment).googleUrl"
                                     target="_blank"
                                     rel="noopener noreferrer"
                                 >
@@ -660,20 +770,17 @@ function back() {
                                 </a>
                             </Button>
                             <Button
-                                v-if="calendarEvent"
                                 type="button"
                                 variant="outline"
-                                @click="saveAppleCalendar"
+                                @click="saveAppleCalendar(appointment)"
                             >
                                 Salvar no Apple Calendar
                             </Button>
-                            <Button
-                                v-if="calendarEvent"
-                                as-child
-                                variant="outline"
-                            >
+                            <Button as-child variant="outline">
                                 <a
-                                    :href="calendarEvent.outlookUrl"
+                                    :href="
+                                        calendarEvent(appointment).outlookUrl
+                                    "
                                     target="_blank"
                                     rel="noopener noreferrer"
                                 >
@@ -741,6 +848,69 @@ function back() {
                     </p>
                 </div>
                 <form @submit.prevent="next">
+                    <section
+                        v-if="step >= 3"
+                        aria-label="Seus atendimentos"
+                        class="mb-6 space-y-3"
+                    >
+                        <h2 class="font-semibold">
+                            Organize cada serviço separadamente
+                        </h2>
+                        <p class="text-sm text-muted-foreground">
+                            Os horários podem ser em dias diferentes, mas não
+                            podem se sobrepor. Nenhum horário está reservado até
+                            a confirmação final.
+                        </p>
+                        <div class="grid gap-3 sm:grid-cols-2">
+                            <button
+                                v-for="item in selectedServices"
+                                :key="item.id"
+                                type="button"
+                                class="rounded-xl border p-4 text-left"
+                                :class="
+                                    selectedClass(
+                                        activeServiceId === item.id && step < 5,
+                                    )
+                                "
+                                :disabled="submitting"
+                                @click="editItem(item.id)"
+                            >
+                                <span class="block font-semibold"
+                                    >{{ item.name }} · {{ item.duration }} min ·
+                                    {{ money(item.price) }}</span
+                                >
+                                <span class="mt-1 block text-sm">{{
+                                    draftDetails(item.id)
+                                }}</span>
+                                <span class="mt-2 block text-sm text-primary">{{
+                                    drafts.find(
+                                        (draft) =>
+                                            draft.service_id === item.id &&
+                                            isComplete(draft),
+                                    )
+                                        ? 'Definido · Editar'
+                                        : 'A definir'
+                                }}</span>
+                                <span
+                                    v-for="(messages, field) in fieldErrors"
+                                    :key="field"
+                                >
+                                    <span
+                                        v-if="
+                                            String(field).startsWith(
+                                                `items.${drafts.findIndex((draft) => draft.service_id === item.id)}.`,
+                                            )
+                                        "
+                                        class="mt-1 block text-sm text-destructive"
+                                        >{{ messages.join(' ') }}</span
+                                    >
+                                </span>
+                            </button>
+                        </div>
+                        <p v-if="step < 5" class="font-semibold text-primary">
+                            Definindo: {{ activeService?.name }}
+                        </p>
+                    </section>
                     <div
                         v-if="step === 0"
                         class="grid max-w-xl gap-5 rounded-2xl border p-6"
@@ -769,17 +939,11 @@ function back() {
                             />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="booking-phone">Telefone com DDD</Label>
-                            <Input
+                            <Label for="booking-phone">Telefone</Label>
+                            <PhoneInput
                                 id="booking-phone"
                                 v-model="phone"
-                                type="tel"
-                                autocomplete="tel"
-                                placeholder="(11) 99999-9999"
                                 required
-                                minlength="10"
-                                maxlength="30"
-                                pattern="\+?(?=(?:\D*\d){10,15}\D*$)[\d\s\(\)\.\-]+"
                             />
                         </div>
                         <p class="text-sm text-muted-foreground">
@@ -909,6 +1073,15 @@ function back() {
                         v-if="step === 3"
                         aria-label="Preferência de barbeiro"
                     >
+                        <p
+                            v-if="!eligibleBarbers.length"
+                            role="status"
+                            class="mb-4 rounded-xl border p-4 text-muted-foreground"
+                        >
+                            Não há profissionais habilitados para este serviço
+                            na unidade. Volte à seleção de serviços ou escolha
+                            outra unidade.
+                        </p>
                         <button
                             type="button"
                             class="mb-6 w-full rounded-2xl border p-6 text-left transition-colors"
@@ -967,7 +1140,7 @@ function back() {
                             class="mb-3 flex items-center justify-between gap-3"
                         >
                             <p class="text-sm text-muted-foreground">
-                                {{ preferenceLabel }}
+                                {{ preferenceLabel }} · {{ shop?.timezone }}
                             </p>
                             <div class="flex gap-2">
                                 <Button
@@ -1022,6 +1195,18 @@ function back() {
                             :aria-busy="loading"
                             class="mt-4"
                         >
+                            <p
+                                v-if="
+                                    date &&
+                                    !loading &&
+                                    fetchedSlots.length !== slots.length
+                                "
+                                class="mb-4 text-sm text-muted-foreground"
+                            >
+                                Horários que coincidem com os outros serviços
+                                escolhidos foram ocultados. Edite os outros
+                                atendimentos se precisar liberar essas opções.
+                            </p>
                             <p v-if="!date" class="text-muted-foreground">
                                 Selecione uma data para consultar os horários.
                             </p>
@@ -1160,33 +1345,36 @@ function back() {
                                     <dd
                                         v-for="item in selectedServices"
                                         :key="item.id"
-                                        class="mt-1 font-semibold"
+                                        class="mt-3 rounded-xl border p-4"
                                     >
-                                        {{ item.name }} ·
-                                        {{ item.duration }} min ·
-                                        {{ money(item.price) }}
+                                        <p class="font-semibold">
+                                            {{ item.name }} ·
+                                            {{ item.duration }} min ·
+                                            {{ money(item.price) }}
+                                        </p>
+                                        <p class="mt-2 text-sm">
+                                            {{ draftDetails(item.id) }}
+                                        </p>
+                                        <p
+                                            class="mt-1 text-xs text-muted-foreground"
+                                        >
+                                            {{ shop?.timezone }}
+                                        </p>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            class="mt-3"
+                                            :disabled="submitting"
+                                            @click="editItem(item.id)"
+                                            >Editar atendimento</Button
+                                        >
                                     </dd>
                                     <dd
                                         class="mt-2 border-t pt-2 font-semibold"
                                     >
-                                        Total: {{ totalDuration }} min ·
+                                        Total de atendimento:
+                                        {{ totalDuration }} min ·
                                         {{ money(String(totalPrice)) }}
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt class="text-sm text-muted-foreground">
-                                        Barbeiro
-                                    </dt>
-                                    <dd class="mt-1 font-semibold">
-                                        {{ barber?.name }}
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt class="text-sm text-muted-foreground">
-                                        Data e horário
-                                    </dt>
-                                    <dd class="mt-1 font-semibold">
-                                        {{ formattedDate }}, às {{ time }}
                                     </dd>
                                 </div>
                             </dl>
@@ -1222,7 +1410,9 @@ function back() {
                                 >Editar meus dados</Button
                             >
                             <p class="mt-6 text-sm text-muted-foreground">
-                                Ao confirmar, sua reserva será registrada. Para
+                                Ao confirmar, todos os atendimentos serão
+                                registrados juntos. Se algum horário não estiver
+                                disponível, nenhum será reservado. Para
                                 alterações ou cancelamento, entre em contato com
                                 a unidade.
                             </p>
@@ -1260,7 +1450,7 @@ function back() {
                             type="submit"
                             :disabled="!canContinue"
                             class="ml-auto"
-                            >{{ submitting ? 'Confirmando…' : ctas[step] }}
+                            >{{ submitting ? 'Confirmando…' : nextLabel }}
                             <span v-if="!submitting" aria-hidden="true"
                                 >→</span
                             ></Button

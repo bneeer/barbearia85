@@ -5,8 +5,10 @@ Aplicação web para apresentar a Barbearia 85 e permitir que clientes agendem s
 ## Recursos
 
 - Página inicial pública com apresentação da barbearia e galeria de fotos.
-- Agendamento público com escolha de unidade, um ou mais serviços, barbeiro, data e horário.
-- Consulta de horários disponíveis considerando a duração somada dos serviços, expediente, horários de trabalho dos barbeiros, bloqueios e agendamentos existentes.
+- Agendamento público com escolha de unidade e um ou mais serviços. Cada serviço tem seu próprio barbeiro e data/horário, inclusive em dias diferentes, sem exigir um profissional que realize todos os serviços. A opção sem preferência consulta os profissionais habilitados para cada serviço.
+- Consulta de horários considerando a duração individual do serviço, expediente, horários de trabalho dos barbeiros, bloqueios e agendamentos existentes, inclusive em outras unidades. Os serviços do mesmo pedido não podem se sobrepor para o cliente; horários consecutivos são permitidos.
+- Confirmação pública atômica: todos os atendimentos são revalidados e registrados juntos, com um único cadastro de cliente. Se qualquer item não estiver disponível, nenhum é criado. O resumo permite editar cada item sem perder os demais; cada reserva confirmada possui seu próprio evento para Google Calendar, Outlook ou Apple Calendar.
+- Agendamentos combinados anteriores e a criação administrativa de vários serviços no mesmo atendimento continuam usando um único barbeiro e a duração somada. As novas reservas públicas podem ser canceladas, reagendadas e finalizadas individualmente na agenda.
 - Cadastro do cliente e criação do agendamento com notificações registradas para processamento.
 - Área administrativa para gerenciar unidades, horários e equipes, barbeiros, serviços e fotos das unidades.
 - Dashboard (`/dashboard`) com filtros globais por intervalo e unidade aplicados aos indicadores, gráfico e atendimentos concluídos. O padrão é do primeiro dia do mês atual até hoje; há atalhos para hoje, semana (segunda a domingo) e mês, além de intervalo personalizado de até 365 dias. Os indicadores comparam o intervalo selecionado ao intervalo imediatamente anterior de igual duração. O calendário do dashboard usa `app.display_timezone` (por padrão `America/Sao_Paulo`), mantendo armazenamento e serialização dos instantes em UTC.
@@ -28,10 +30,17 @@ Aplicação web para apresentar a Barbearia 85 e permitir que clientes agendem s
 - O calendário impede selecionar períodos passados e mover eventos para o passado. O servidor também rejeita criar ou reagendar bloqueios para períodos passados. “Fechar o dia” para hoje bloqueia somente de agora até o fim do dia, no fuso da unidade.
 - Reagendamentos respeitam o expediente da unidade e do barbeiro, a duração somada dos serviços e os conflitos de agenda. A grade pública de 40 minutos permanece inalterada; ajustes administrativos podem usar outros horários.
 - Autenticação, verificação de e-mail, recuperação de senha e configurações de perfil e segurança.
+- Telefones internacionais em todos os formulários, com seleção de país, formatação durante a digitação e validação no frontend e no servidor. Clientes, barbeiros, unidades e novos destinatários de notificações são gravados em E.164 (por exemplo, `+5511999999999`), sem máscara ou ramal. O país inicial é Brasil; números de outros países devem ser selecionados no campo ou informados com `+` e código internacional. A cobertura segue os planos de numeração do libphonenumber, incluindo números não geográficos na opção “Internacional (+)”. A validade do formato não comprova que a linha existe ou recebe WhatsApp.
 
 ## Tecnologias
 
 O gráfico do dashboard mostra, para o intervalo e unidade selecionados, serviços concluídos (linha contínua) e agendados (tracejada), com dias sem movimento zerados, tooltips, legenda interativa e tabela acessível alternativa. Conta cada serviço uma vez por atendimento, preservando os itens do fechamento e usando o cadastro apenas para registros antigos sem fechamento. Clicar em um ponto de concluídos filtra a tabela pelo serviço e dia, preservando os filtros globais. O gráfico respeita o acesso do perfil: dados globais para administradores e somente os próprios atendimentos para barbeiros.
+
+Abaixo do gráfico, os destaques mostram os serviços mais e menos prestados entre os que tiveram atendimentos concluídos no intervalo e unidade selecionados, incluindo todos os empates. Administradores, ao ativar “Exibir valores financeiros”, também veem “Maior faturamento” e “Menor faturamento”, pelo faturamento total dos serviços nos fechamentos (antes do desconto geral, sem produtos e sem representar lucro líquido). Serviços com algum atendimento sem fechamento ficam fora do ranking financeiro, com aviso de dados incompletos; preços atuais do cadastro não substituem valores históricos. Filtros exclusivos da tabela e paginação não alteram esses destaques.
+
+As comparações existentes no resumo geral e por barbeiro mantêm os valores anteriores e acrescentam a variação percentual com uma casa decimal, calculada sobre o valor anterior. A ocupação usa diferença em pontos percentuais (`p.p.`). Base anterior zero com valor atual positivo mostra “Sem base de comparação”; valores iguais, inclusive ambos zero, mostram “Sem alteração”; dados ausentes mostram “Comparação indisponível”. A apresentação é neutra, sem classificar aumentos ou quedas como bons ou ruins. Os destaques de serviços e os valores financeiros individuais que não tinham comparação anterior permanecem sem variação.
+
+Administradores também consultam barras horizontais de atendimentos concluídos e agendados por barbeiro, ordenadas pelo total e limitadas aos profissionais com movimento no período e unidade selecionados. Com “Exibir valores financeiros” ativado, um gráfico de rosca apresenta o faturamento por forma de pagamento, acompanhado de tabela com valores absolutos em reais e participação percentual. A base é a soma dos totais dos fechamentos de atendimentos concluídos, incluindo produtos e após descontos, sem estimar valores de atendimentos sem fechamento. Percentuais usam sempre o total original, mesmo ao ocultar fatias pela legenda, e não se aplicam quando esse total é zero. Ambos os gráficos possuem alternativa tabular acessível e não são afetados por paginação ou filtros exclusivos da tabela de atendimentos.
 
 - **Backend:** PHP 8.3+, Laravel 13, Laravel Fortify e PhpSpreadsheet para exportação XLSX.
 - **Interface:** Vue 3, TypeScript, Inertia.js 3, Tailwind CSS 4 e Vite.
@@ -80,11 +89,24 @@ O historico inclui atendimentos concluidos com fechamento, cancelamentos, faltas
 
 Pode ser executado novamente: os cadastros de demonstracao sao reaproveitados e os agendamentos ja gerados (identificados pelo marcador `[demo:...]` nas observacoes) nao sao duplicados nem sobrescritos. Uma nova execucao em outro dia estende a janela de datas. Os contatos usam `example.test` e telefones ficticios; os novos barbeiros recebem senhas aleatorias, sem credencial compartilhada. Acesse com o administrador existente para testar. O comando recusa ambientes diferentes de `local` e `testing`. Nao use `migrate:fresh` nem o seeder padrao para esta populacao.
 
+## Telefones já cadastrados
+
+Os registros anteriores não são alterados automaticamente. Após atualizar as dependências PHP e JavaScript, verifique a conversão com `php artisan phones:normalize` (simulação, sem gravação) e aplique com `php artisan phones:normalize --write`. Faça backup antes de aplicar. Números nacionais antigos são interpretados como brasileiros; números estrangeiros sem código internacional precisam de revisão manual antes da conversão.
+
+O comando percorre usuários, clientes (inclusive excluídos logicamente), telefones de unidades e payloads de notificações pendentes, preservando notificações já enviadas. Telefones equivalentes de uma unidade são deduplicados. Registros inválidos são preservados e identificados por tabela/ID, sem expor o número; o comando retorna falha enquanto houver pendências, mesmo quando os outros registros válidos foram gravados com `--write`. Revise essas pendências antes de ativar o envio de notificações.
+
 ## Testes
 
 ```bash
 php artisan test
 ```
+
+Os testes de formatação e normalização do frontend usam Node.js 22.6 ou superior: `npm run test:phone`.
+As regras de seleção e sobreposição dos serviços públicos são cobertas por `npm run test:booking`. Notificações de confirmação continuam pendentes por reserva, sem envio automático.
+
+As regras de comparação do dashboard são cobertas por `node --experimental-strip-types --test tests/frontend/dashboard-comparison.test.mjs`.
+
+Os gráficos de atendimentos por barbeiro e de faturamento por forma de pagamento são cobertos por `node --test tests/frontend/dashboard-charts.test.mjs`, incluindo ordenação, percentuais, atualização dos dados, estados vazios e tabelas acessíveis.
 
 Para executar as verificações de lint, formatação, tipos e testes configuradas no projeto:
 

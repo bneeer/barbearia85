@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, ref } from 'vue';
+import DashboardComparison from '@/components/DashboardComparison.vue';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -175,6 +176,10 @@ onBeforeUnmount(() => controller?.abort());
                     <p class="text-sm text-muted-foreground">
                         Anterior: {{ summary.previous.completed }}
                     </p>
+                    <DashboardComparison
+                        :current="summary.current.completed"
+                        :previous="summary.previous.completed"
+                    />
                 </CardContent>
             </Card>
             <Card>
@@ -190,6 +195,10 @@ onBeforeUnmount(() => controller?.abort());
                     <p class="text-sm text-muted-foreground">
                         Anterior: {{ summary.previous.scheduled }}
                     </p>
+                    <DashboardComparison
+                        :current="summary.current.scheduled"
+                        :previous="summary.previous.scheduled"
+                    />
                 </CardContent>
             </Card>
             <Card>
@@ -200,8 +209,11 @@ onBeforeUnmount(() => controller?.abort());
                     </p>
                     <p class="text-sm text-muted-foreground">
                         Anterior: {{ summary.previous.cancelled }}
-                    </p></CardContent
-                >
+                    </p>
+                    <DashboardComparison
+                        :current="summary.current.cancelled"
+                        :previous="summary.previous.cancelled"
+                /></CardContent>
             </Card>
             <Card>
                 <CardHeader><CardTitle>Faltas</CardTitle></CardHeader>
@@ -211,8 +223,11 @@ onBeforeUnmount(() => controller?.abort());
                     </p>
                     <p class="text-sm text-muted-foreground">
                         Anterior: {{ summary.previous.no_show }}
-                    </p></CardContent
-                >
+                    </p>
+                    <DashboardComparison
+                        :current="summary.current.no_show"
+                        :previous="summary.previous.no_show"
+                /></CardContent>
             </Card>
         </div>
 
@@ -266,9 +281,16 @@ onBeforeUnmount(() => controller?.abort());
                         unidades; horários bloqueados são descontados. Período
                         anterior:
                         {{
-                            summary.previous.capacity?.occupancy_percent ?? 0
-                        }}%.
+                            summary.previous.capacity
+                                ? `${summary.previous.capacity.occupancy_percent}%`
+                                : 'Indisponível'
+                        }}.
                     </p>
+                    <DashboardComparison
+                        :current="summary.current.capacity.occupancy_percent"
+                        :previous="summary.previous.capacity?.occupancy_percent"
+                        mode="points"
+                    />
                     <div
                         v-if="summary.current.capacity.barbers.length"
                         class="overflow-x-auto"
@@ -282,6 +304,9 @@ onBeforeUnmount(() => controller?.abort());
                                     <th scope="col" class="p-2">Barbeiro</th>
                                     <th scope="col" class="p-2">Ocupação</th>
                                     <th scope="col" class="p-2">Anterior</th>
+                                    <th scope="col" class="p-2">
+                                        Variação (p.p.)
+                                    </th>
                                     <th scope="col" class="p-2">Livre</th>
                                 </tr>
                             </thead>
@@ -302,8 +327,30 @@ onBeforeUnmount(() => controller?.abort());
                                         {{
                                             summary.previous.capacity?.barbers.find(
                                                 (item) => item.id === barber.id,
-                                            )?.occupancy_percent ?? 0
-                                        }}%
+                                            )?.occupancy_percent ??
+                                            'Indisponível'
+                                        }}
+                                        <span
+                                            v-if="
+                                                summary.previous.capacity?.barbers.some(
+                                                    (item) =>
+                                                        item.id === barber.id,
+                                                )
+                                            "
+                                            >%</span
+                                        >
+                                    </td>
+                                    <td class="p-2">
+                                        <DashboardComparison
+                                            :current="barber.occupancy_percent"
+                                            :previous="
+                                                summary.previous.capacity?.barbers.find(
+                                                    (item) =>
+                                                        item.id === barber.id,
+                                                )?.occupancy_percent
+                                            "
+                                            mode="points"
+                                        />
                                     </td>
                                     <td class="p-2">
                                         {{ minutes(barber.free_minutes) }}
@@ -340,6 +387,21 @@ onBeforeUnmount(() => controller?.abort());
                         {{ summary.previous.retention.returning_clients }}
                         recorrentes).
                     </p>
+                    <DashboardComparison
+                        label="Variação de clientes únicos"
+                        :current="summary.current.retention.unique_clients"
+                        :previous="summary.previous.retention.unique_clients"
+                    />
+                    <DashboardComparison
+                        label="Variação de novos clientes"
+                        :current="summary.current.retention.new_clients"
+                        :previous="summary.previous.retention.new_clients"
+                    />
+                    <DashboardComparison
+                        label="Variação de clientes recorrentes"
+                        :current="summary.current.retention.returning_clients"
+                        :previous="summary.previous.retention.returning_clients"
+                    />
                 </CardContent>
             </Card>
         </div>
@@ -371,6 +433,15 @@ onBeforeUnmount(() => controller?.abort());
                                 )
                             }}
                         </p>
+                        <DashboardComparison
+                            :current="
+                                summary.current.financials?.average_ticket_cents
+                            "
+                            :previous="
+                                summary.previous.financials
+                                    ?.average_ticket_cents
+                            "
+                        />
                     </div>
                     <div>
                         <p class="text-sm text-muted-foreground">
@@ -391,6 +462,14 @@ onBeforeUnmount(() => controller?.abort());
                                 )
                             }}
                         </p>
+                        <DashboardComparison
+                            :current="
+                                summary.current.financials?.discount_cents
+                            "
+                            :previous="
+                                summary.previous.financials?.discount_cents
+                            "
+                        />
                     </div>
                     <div>
                         <p class="text-sm text-muted-foreground">
@@ -407,6 +486,14 @@ onBeforeUnmount(() => controller?.abort());
                                 summary.previous.financials?.checkout_count ?? 0
                             }}
                         </p>
+                        <DashboardComparison
+                            :current="
+                                summary.current.financials?.checkout_count
+                            "
+                            :previous="
+                                summary.previous.financials?.checkout_count
+                            "
+                        />
                     </div>
                 </div>
                 <div class="flex flex-wrap gap-3 text-sm">
@@ -422,6 +509,16 @@ onBeforeUnmount(() => controller?.abort());
                             Anterior: {{ method.previous.count }} ·
                             {{ formatMoney(method.previous.total_cents) }}
                         </span>
+                        <DashboardComparison
+                            label="Variação de quantidade"
+                            :current="method.current.count"
+                            :previous="method.previous.count"
+                        />
+                        <DashboardComparison
+                            label="Variação de valor"
+                            :current="method.current.total_cents"
+                            :previous="method.previous.total_cents"
+                        />
                     </p>
                     <p
                         v-if="!paymentMethods.length"
@@ -477,7 +574,7 @@ onBeforeUnmount(() => controller?.abort());
                         }}</CardTitle>
                     </CardHeader>
                     <CardContent class="space-y-3">
-                        <div class="grid grid-cols-3 gap-2 text-sm">
+                        <div class="grid grid-cols-2 gap-3 text-sm">
                             <div>
                                 <p class="text-muted-foreground">Concluídos</p>
                                 <Link
@@ -485,6 +582,13 @@ onBeforeUnmount(() => controller?.abort());
                                     class="font-semibold underline"
                                     >{{ barber.current.completed }}</Link
                                 >
+                                <p class="text-xs text-muted-foreground">
+                                    Anterior: {{ barber.previous.completed }}
+                                </p>
+                                <DashboardComparison
+                                    :current="barber.current.completed"
+                                    :previous="barber.previous.completed"
+                                />
                             </div>
                             <div>
                                 <p class="text-muted-foreground">Agendados</p>
@@ -494,23 +598,41 @@ onBeforeUnmount(() => controller?.abort());
                                 >
                                     {{ barber.current.scheduled }}
                                 </button>
+                                <p class="text-xs text-muted-foreground">
+                                    Anterior: {{ barber.previous.scheduled }}
+                                </p>
+                                <DashboardComparison
+                                    :current="barber.current.scheduled"
+                                    :previous="barber.previous.scheduled"
+                                />
                             </div>
                             <div>
-                                <p class="text-muted-foreground">
-                                    Cancelados / faltas
-                                </p>
+                                <p class="text-muted-foreground">Cancelados</p>
                                 <p class="font-semibold">
-                                    {{ barber.current.cancelled }} /
+                                    {{ barber.current.cancelled }}
+                                </p>
+                                <p class="text-xs text-muted-foreground">
+                                    Anterior: {{ barber.previous.cancelled }}
+                                </p>
+                                <DashboardComparison
+                                    :current="barber.current.cancelled"
+                                    :previous="barber.previous.cancelled"
+                                />
+                            </div>
+                            <div>
+                                <p class="text-muted-foreground">Faltas</p>
+                                <p class="font-semibold">
                                     {{ barber.current.no_show }}
                                 </p>
+                                <p class="text-xs text-muted-foreground">
+                                    Anterior: {{ barber.previous.no_show }}
+                                </p>
+                                <DashboardComparison
+                                    :current="barber.current.no_show"
+                                    :previous="barber.previous.no_show"
+                                />
                             </div>
                         </div>
-                        <p class="text-xs text-muted-foreground">
-                            Anterior: {{ barber.previous.completed }} concluídos
-                            · {{ barber.previous.scheduled }} agendados ·
-                            {{ barber.previous.cancelled }} cancelados ·
-                            {{ barber.previous.no_show }} faltas
-                        </p>
                         <div
                             v-if="showFinancials"
                             class="border-t pt-3 text-sm"

@@ -74,6 +74,78 @@ class DashboardTest extends TestCase
         return Barbershop::create(['name' => $name, 'slug' => strtolower($name), 'timezone' => 'America/Sao_Paulo']);
     }
 
+    public function test_service_highlights_use_completed_snapshots_and_global_range_filters(): void
+    {
+        $shop = $this->shop();
+        $other = $this->shop('Norte');
+        $admin = User::factory()->create(['role' => 'admin']);
+        $barber = User::factory()->create(['role' => 'barber']);
+        $barber->barbershops()->attach($shop->id);
+        $appointment = $this->completedAppointment($shop, $barber);
+        $service = $appointment->service;
+        $service->update(['name' => 'Nome atual', 'price' => '999.00']);
+        $repeat = $appointment->replicate();
+        $repeat->save();
+        $repeat->checkout()->create($appointment->checkout->only([
+            'created_by', 'services', 'products', 'services_total_cents',
+            'products_total_cents', 'discount_cents', 'total_cents', 'payment_method',
+        ]));
+        $repeat->services()->attach($service);
+        $legacy = $this->completedAppointment($shop, $barber, false);
+        $legacy->services()->detach();
+        $this->completedAppointment($other, $barber);
+        foreach (['scheduled', 'cancelled', 'no_show'] as $status) {
+            $this->completedAppointment($shop, $barber)->update(['status' => $status]);
+        }
+        $this->completedAppointment($shop, $barber)->delete();
+        $this->completedAppointment($shop, $barber)->update([
+            'start_time' => '2026-11-10 03:00:00',
+        ]);
+        $query = http_build_query([
+            'range_from' => '2026-11-09', 'range_to' => '2026-11-09',
+            'barbershop_id' => $shop->id, 'services' => 'Inexistente', 'per_page' => 10,
+        ]);
+
+        $this->actingAs($admin)->get('/dashboard?'.$query)->assertInertia(fn (Assert $page) => $page
+            ->where('appointments.total', 0)
+            ->where('rangeTimeline.series', function ($series) use ($service, $legacy) {
+                $completed = collect($series)->filter(fn ($item) => array_sum($item['counts']) > 0)->keyBy('id');
+
+                return $completed->count() === 2
+                    && $completed[$service->id]['name'] === 'Corte histórico'
+                    && array_sum($completed[$service->id]['counts']) === 2
+                    && $completed[$service->id]['revenue_cents'] === 10000
+                    && $completed[$legacy->service_id]['revenue_cents'] === null;
+            }));
+
+        $service->delete();
+        $this->actingAs($barber)->get('/dashboard?'.$query)->assertInertia(fn (Assert $page) => $page
+            ->where('rangeTimeline.series', fn ($series) => collect($series)->every(
+                fn ($item) => ! array_key_exists('revenue_cents', $item)
+            )));
+        $this->actingAs(User::factory()->create(['role' => 'barber']))
+            ->get('/dashboard?range_from=2026-11-09&range_to=2026-11-09')
+            ->assertInertia(fn (Assert $page) => $page->where('rangeTimeline.series', []));
+        $this->actingAs(User::factory()->create(['role' => 'client']))
+            ->get('/dashboard')->assertInertia(fn (Assert $page) => $page->missing('rangeTimeline'));
+    }
+
+    public function test_service_highlights_do_not_treat_incomplete_revenue_as_zero(): void
+    {
+        $shop = $this->shop();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $appointment = $this->completedAppointment($shop, $admin);
+        $legacy = $appointment->replicate();
+        $legacy->save();
+        $legacy->services()->attach($appointment->service_id);
+
+        $this->actingAs($admin)->get('/dashboard?range_from=2026-11-09&range_to=2026-11-09')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('rangeTimeline.series', 1)
+                ->where('rangeTimeline.series.0.counts', [2])
+                ->where('rangeTimeline.series.0.revenue_cents', null));
+    }
+
     private function indicatorsWithoutCheckouts(array $periods): array
     {
         return array_map(fn (array $indicator) => [

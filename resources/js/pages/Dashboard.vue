@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
+import BarberAppointmentsChart from '@/components/BarberAppointmentsChart.vue';
 import CompletedAppointmentsTable from '@/components/CompletedAppointmentsTable.vue';
 import DashboardIndicators from '@/components/DashboardIndicators.vue';
+import PaymentMethodsChart from '@/components/PaymentMethodsChart.vue';
+import ServiceHighlights from '@/components/ServiceHighlights.vue';
 import ServicesTimelineChart from '@/components/ServicesTimelineChart.vue';
 import Switch from '@/components/ui/switch/Switch.vue';
 import { useAuth } from '@/composables/useAuth';
@@ -248,10 +251,28 @@ defineOptions({
             :barbershop-id="appliedBarbershopId"
             :show-financials="isAdmin && showFinancials"
         />
+        <div
+            v-if="isAdmin && summary"
+            class="grid min-w-0 gap-6"
+            :class="{
+                'xl:grid-cols-2': showFinancials && summary.current.financials,
+            }"
+        >
+            <BarberAppointmentsChart :barbers="summary.barbers" />
+            <PaymentMethodsChart
+                v-if="showFinancials && summary.current.financials"
+                :payment-methods="summary.current.financials.payment_methods"
+            />
+        </div>
         <ServicesTimelineChart
             v-if="isBarber && rangeTimeline"
             :timeline="rangeTimeline"
             :filters="filters ?? {}"
+        />
+        <ServiceHighlights
+            v-if="isBarber && rangeTimeline"
+            :timeline="rangeTimeline"
+            :show-financials="isAdmin && showFinancials"
         />
         <CompletedAppointmentsTable
             v-if="isBarber && appointments && indicators"

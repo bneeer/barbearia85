@@ -79,7 +79,7 @@ class DemoDataSeeder extends Seeder
             ['barbershop_id' => $shop->id, 'email' => "cliente.demo.{$shop->id}.{$index}@example.test"],
             [
                 'name' => $faker->name(),
-                'phone' => '1190000'.str_pad((string) $index, 4, '0', STR_PAD_LEFT),
+                'phone' => '+551190000'.str_pad((string) $index, 4, '0', STR_PAD_LEFT),
                 'notes' => $faker->randomElement([
                     'Dados ficticios. Prefere acabamento natural.',
                     'Dados ficticios. Cliente costuma agendar pelo WhatsApp.',
@@ -95,7 +95,7 @@ class DemoDataSeeder extends Seeder
                 [
                     'name' => $faker->firstNameMale().' '.$faker->lastName(),
                     'password' => Hash::make(Str::random(40)), 'role' => 'barber', 'barbershop_id' => $shop->id,
-                    'phone' => '1190001'.str_pad((string) $index, 4, '0', STR_PAD_LEFT),
+                    'phone' => '+551190001'.str_pad((string) $index, 4, '0', STR_PAD_LEFT),
                 ],
             );
             $barber->barbershops()->syncWithoutDetaching([$shop->id]);

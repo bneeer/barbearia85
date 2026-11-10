@@ -175,6 +175,7 @@ class ScheduleTest extends TestCase
         $this->assertSame('Prefere corte mais curto.', $appointment->notes);
         $client = DB::table('clients')->where('id', $appointment->client_id)->first();
         $this->assertSame('Cliente pelo WhatsApp', $client->name);
+        $this->assertSame('+5511999991234', $client->phone);
         $this->assertSame('Prefere corte mais curto.', $client->notes);
         $this->assertDatabaseCount('notifications', 2);
         foreach (Notification::all() as $notification) {
@@ -184,9 +185,34 @@ class ScheduleTest extends TestCase
             $this->assertSame('2026-11-09T09:00:00-03:00', $notification->payload['starts_at']);
             $this->assertSame('Corte', $notification->payload['service']);
             $this->assertSame('Cliente pelo WhatsApp', $notification->payload['name']);
+            $this->assertSame(
+                $notification->type === 'email' ? 'whatsapp@example.com' : '+5511999991234',
+                $notification->payload['recipient'],
+            );
         }
         $this->events()->assertOk()->assertJsonCount(1)
             ->assertJsonPath('0.extendedProps.client.name', 'Cliente pelo WhatsApp');
+    }
+
+    public function test_manual_booking_accepts_international_phones_and_rejects_invalid_recipients(): void
+    {
+        $this->actingAs($this->admin);
+        $payload = [
+            'barbershop_id' => $this->shop->id,
+            'name' => 'Cliente internacional',
+            'email' => 'international@example.com',
+            'service_id' => $this->service->id,
+            'barber_id' => $this->barber->id,
+            'date' => '2026-11-09',
+            'time' => '09:00',
+        ];
+        $this->postJson('/schedule/appointments', [...$payload, 'phone' => '+999123456789'])
+            ->assertUnprocessable()->assertJsonValidationErrors('phone');
+        $this->assertDatabaseCount('clients', 0);
+        $this->assertDatabaseCount('notifications', 0);
+        $this->postJson('/schedule/appointments', [...$payload, 'phone' => '+44 20 7946 0018'])->assertCreated();
+        $this->assertDatabaseHas('clients', ['phone' => '+442079460018']);
+        $this->assertSame('+442079460018', Notification::where('type', 'whatsapp')->firstOrFail()->payload['recipient']);
     }
 
     public function test_calendar_selected_duration_must_fit_service_and_longer_selection_keeps_remaining_time_free(): void

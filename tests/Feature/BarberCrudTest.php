@@ -65,7 +65,7 @@ class BarberCrudTest extends TestCase
         ]))->assertSessionHasNoErrors()->assertRedirect('/barbers');
         $barber = User::where('email', 'barbeiro@example.com')->firstOrFail();
         $this->assertSame($shop->id, $barber->barbershop_id);
-        $this->assertSame('(11) 99999-9999', $barber->phone);
+        $this->assertSame('+5511999999999', $barber->phone);
         $this->assertDatabaseCount('barber_service', 2);
         Storage::disk('public')->assertExists($barber->photo_path);
 
@@ -73,24 +73,26 @@ class BarberCrudTest extends TestCase
             ->component('Barbers/Edit')->has('barber.services', 2)->has('services', 2)
             ->where('barber.avatar', $barber->avatar));
         $this->get("/barbers/$barber->id")->assertOk()->assertInertia(fn (Assert $page) => $page
-            ->component('Barbers/Show')->where('barber.phone', '(11) 99999-9999')->has('barber.services', 2));
+            ->component('Barbers/Show')->where('barber.phone', '+5511999999999')->has('barber.services', 2));
         $this->get('/barbers')->assertOk()->assertInertia(fn (Assert $page) => $page
             ->where('barbers.data.0.avatar', $barber->avatar)->where('barbers.data.0.phone', $barber->phone));
 
         $this->put("/barbers/$barber->id", $this->data([
             'password' => 'password',
-            'phone' => '123',
+            'phone' => '+44 20 7946 0018',
             'service_ids' => [$second->id],
         ]))->assertSessionHasNoErrors()->assertRedirect('/barbers');
         $this->assertDatabaseMissing('barber_service', ['user_id' => $barber->id, 'service_id' => $first->id]);
         $this->assertDatabaseHas('barber_service', ['user_id' => $barber->id, 'service_id' => $second->id]);
         $this->assertDatabaseMissing('barber_service', ['user_id' => $barber->id, 'service_id' => $other->id]);
-        $this->assertSame('123', $barber->fresh()->phone);
+        $this->assertSame('+442079460018', $barber->fresh()->phone);
 
         $data = $this->data();
         unset($data['service_ids'], $data['password']);
+        $data['phone'] = '';
         $this->put("/barbers/$barber->id", $data)->assertSessionHasNoErrors();
         $this->assertDatabaseCount('barber_service', 0);
+        $this->assertNull($barber->fresh()->phone);
     }
 
     public function test_photo_is_shared_between_profile_and_admin_forms(): void
@@ -143,6 +145,9 @@ class BarberCrudTest extends TestCase
             ->assertSessionHasErrors('service_ids.0');
         $this->post('/barbers', $this->data(['phone' => str_repeat('1', 31), 'photo' => UploadedFile::fake()->create('file.txt', 10, 'text/plain')]))
             ->assertSessionHasErrors(['phone', 'photo']);
+        foreach (['123', '+999123456789', '+5511999999999 ext. 1'] as $phone) {
+            $this->post('/barbers', $this->data(['phone' => $phone]))->assertSessionHasErrors('phone');
+        }
         $this->post('/barbers', $this->data(['photo' => UploadedFile::fake()->image('big.jpg')->size(2049)]))
             ->assertSessionHasErrors('photo');
         $this->assertDatabaseHas('barber_service', ['user_id' => $barber->id, 'service_id' => $service->id]);

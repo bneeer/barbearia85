@@ -17,6 +17,7 @@ import {
 } from 'lucide-vue-next';
 import { computed, nextTick, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
+import PhoneInput from '@/components/PhoneInput.vue';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -1238,12 +1239,9 @@ const options = computed<CalendarOptions>(() => ({
                                 <Label for="manual-client-phone"
                                     >Telefone</Label
                                 >
-                                <Input
+                                <PhoneInput
                                     id="manual-client-phone"
                                     v-model="clientPhone"
-                                    type="tel"
-                                    autocomplete="tel"
-                                    maxlength="30"
                                     required
                                 />
                             </div>

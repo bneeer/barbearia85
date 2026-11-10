@@ -64,7 +64,7 @@ class BarbershopCrudTest extends TestCase
         $barbershop = Barbershop::where('name', 'Barbearia Central')->firstOrFail();
         $this->assertSame('01310100', $barbershop->zip_code);
         $this->assertFalse($barbershop->is_open);
-        $this->assertSame(['(11) 99999-9999', '(11) 3333-4444'], $barbershop->phones);
+        $this->assertSame(['+5511999999999', '+551133334444'], $barbershop->phones);
         $this->assertDatabaseHas('barbershop_user', [
             'barbershop_id' => $barbershop->id,
             'user_id' => $barber->id,
@@ -74,7 +74,7 @@ class BarbershopCrudTest extends TestCase
             ->where('barbershop.opening_hours.monday.open', '09:00'));
         $this->get("/barbershops/$barbershop->id")->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Barbershops/Show')->where('barbershop.users.0.id', $barber->id)
-            ->where('barbershop.phones.0', '(11) 99999-9999'));
+            ->where('barbershop.phones.0', '+5511999999999'));
 
         $this->put("/barbershops/$barbershop->id", $this->data([
             'name' => 'Barbearia Centro',
@@ -120,6 +120,24 @@ class BarbershopCrudTest extends TestCase
         ])->assertSessionHasNoErrors();
         $this->assertDatabaseMissing('barbershop_user', ['barbershop_id' => $primary->id, 'user_id' => $barber->id]);
         $this->assertDatabaseHas('barbershop_user', ['barbershop_id' => $secondary->id, 'user_id' => $barber->id]);
+    }
+
+    public function test_unit_phones_accept_international_numbers_and_reject_equivalent_duplicates(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->post('/barbershops', $this->data([
+            'phones' => ['+351 912 345 678', '+1 (202) 555-0123'],
+        ]))->assertSessionHasNoErrors();
+        $shop = Barbershop::firstOrFail();
+        $this->assertSame(['+351912345678', '+12025550123'], $shop->phones);
+
+        $this->put("/barbershops/$shop->id", $this->data([
+            'phones' => ['(11) 99999-9999', '+55 11 99999-9999'],
+        ]))->assertSessionHasErrors('phones.1');
+        $this->put("/barbershops/$shop->id", $this->data([
+            'phones' => ['123'],
+        ]))->assertSessionHasErrors('phones.0');
+        $this->assertSame(['+351912345678', '+12025550123'], $shop->fresh()->phones);
     }
 
     public function test_unit_schedule_cep_and_barber_ids_are_validated(): void
