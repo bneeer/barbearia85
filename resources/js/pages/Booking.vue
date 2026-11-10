@@ -5,6 +5,7 @@ import BookingGallery from '@/components/BookingGallery.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DISPLAY_TIMEZONE } from '@/lib/dateTime';
 
 type Service = {
     id: number;
@@ -56,7 +57,7 @@ const copies = [
     'Escolha uma unidade e conheça o espaço pelas fotos. Deslize para ver mais opções.',
     'Selecione um ou mais serviços para combinar na mesma visita.',
     'Escolha seu profissional favorito ou veja os horários de toda a equipe.',
-    'Escolha uma data e um horário disponível. Os horários seguem o fuso da unidade.',
+    'Escolha uma data e um horário disponível.',
     'Confira os detalhes antes de reservar. O horário será validado novamente na confirmação.',
 ];
 const ctas = [
@@ -189,11 +190,7 @@ const calendarEvent = computed(() => {
         return null;
     }
 
-    const start = zonedDateTimeToUtc(
-        date.value,
-        time.value,
-        shop.value.timezone,
-    );
+    const start = zonedDateTimeToUtc(date.value, time.value, DISPLAY_TIMEZONE);
     const end = new Date(start.getTime() + totalDuration.value * 60_000);
     const serviceNames = selectedServices.value
         .map((item) => item.name)
@@ -220,7 +217,7 @@ const calendarEvent = computed(() => {
         dates: `${calendarDateTime(start)}/${calendarDateTime(end)}`,
         details: details.description,
         location: details.location,
-        ctz: shop.value.timezone,
+        ctz: DISPLAY_TIMEZONE,
     });
     const outlookParams = new URLSearchParams({
         path: '/calendar/action/compose',
@@ -971,7 +968,6 @@ function back() {
                         >
                             <p class="text-sm text-muted-foreground">
                                 {{ preferenceLabel }}
-                                · {{ shop?.timezone }}
                             </p>
                             <div class="flex gap-2">
                                 <Button
@@ -1191,9 +1187,6 @@ function back() {
                                     </dt>
                                     <dd class="mt-1 font-semibold">
                                         {{ formattedDate }}, às {{ time }}
-                                    </dd>
-                                    <dd class="text-sm text-muted-foreground">
-                                        {{ shop?.timezone }}
                                     </dd>
                                 </div>
                             </dl>

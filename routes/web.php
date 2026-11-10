@@ -3,6 +3,7 @@
 use App\Http\Controllers\BarberController;
 use App\Http\Controllers\BarbershopController;
 use App\Http\Controllers\BookingController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\ServiceController;
@@ -35,7 +36,9 @@ Route::get('api/barbershops/{barbershop:slug}/gallery', [BarbershopController::c
     ->name('barbershops.gallery');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+    Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('dashboard/scheduled', [DashboardController::class, 'scheduled'])->name('dashboard.scheduled');
+    Route::get('dashboard/export', [DashboardController::class, 'export'])->name('dashboard.export');
     Route::get('schedule', [ScheduleController::class, 'index'])->name('schedule.index');
     Route::get('schedule/events', [ScheduleController::class, 'events'])->name('schedule.events');
     Route::post('schedule/appointments', [ScheduleController::class, 'storeAppointment'])->name('schedule.appointments.store');

@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DISPLAY_TIMEZONE } from '@/lib/dateTime';
 
 type Service = { id: number; name: string; duration: number; price: string };
 type Product = { id: number; name: string; brand: string; price: string };
@@ -82,11 +83,13 @@ type Details = {
     reason?: string;
     version?: string;
     checkout?: Checkout | null;
+    canCheckout?: boolean;
 };
 type Selection = { details: Details; start: string; end: string };
 type CalendarSelection = {
     start: string;
     end: string;
+    startsAt: number;
     allDay: boolean;
     durationMinutes: number | null;
 };
@@ -271,7 +274,7 @@ function localTime(iso: string) {
     }
 
     const parts = new Intl.DateTimeFormat('sv-SE', {
-        timeZone: shop.value.timezone,
+        timeZone: DISPLAY_TIMEZONE,
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -345,8 +348,24 @@ function selectShop(unit: Shop) {
 function refresh() {
     calendar.value?.getApi().refetchEvents();
 }
+function isPastSelection(selection: CalendarSelection | null) {
+    if (!selection) {
+        return false;
+    }
+
+    return selection.allDay
+        ? selection.start.slice(0, 10) <
+              localTime(new Date().toISOString()).slice(0, 10)
+        : selection.startsAt <= Date.now();
+}
 function openCreateAppointment(selection: CalendarSelection | null = null) {
     if (!shop.value || !shop.value.barbers.length || busy.value) {
+        return;
+    }
+
+    if (isPastSelection(selection)) {
+        toast.error('Escolha uma data e um horário futuros para agendar.');
+
         return;
     }
 
@@ -451,13 +470,19 @@ async function chooseCalendarAction(action: 'appointment' | 'block') {
         return;
     }
 
+    if (isPastSelection(selection)) {
+        toast.error('Escolha um período futuro para agendar ou bloquear.');
+
+        return;
+    }
+
     rangeChoiceOpen.value = false;
     await nextTick();
 
     if (action === 'appointment') {
         openCreateAppointment(selection);
     } else {
-        showBlock(selection.start, selection.end);
+        showBlock(selection.start, selection.end, selection.allDay);
     }
 }
 watch(createBarberId, () => {
@@ -515,11 +540,25 @@ function showBlock(
     editingBlock.value = null;
     reason.value = '';
     const currentDate = calendar.value?.getApi().getDate();
-    const day = currentDate
+    const now = new Date();
+    const today = localTime(now.toISOString()).slice(0, 10);
+    const calendarDay = currentDate
         ? localTime(currentDate.toISOString()).slice(0, 10)
-        : shop.value!.today;
-    start.value = selectionStart ?? `${day}T09:00`;
-    end.value = selectionEnd ?? `${day}T10:00`;
+        : today;
+    const day = calendarDay < today ? today : calendarDay;
+    const nextMinute = new Date(
+        Math.floor(now.getTime() / 60_000) * 60_000 + 60_000,
+    );
+    start.value =
+        selectionStart ??
+        (day === today ? localTime(nextMinute.toISOString()) : `${day}T09:00`);
+    end.value =
+        selectionEnd ??
+        (day === today
+            ? localTime(
+                  new Date(nextMinute.getTime() + 60 * 60_000).toISOString(),
+              )
+            : `${day}T10:00`);
     blockDate.value = start.value.slice(0, 10);
     fullDay.value = allDay;
     blockBarbers.value = barberId.value
@@ -544,6 +583,10 @@ function openEvent(event: EventApi) {
     detailsOpen.value = true;
 }
 async function openCheckout() {
+    if (!selected.value?.details.canCheckout) {
+        return;
+    }
+
     checkoutProducts.value = [];
     productToAdd.value = '';
     discount.value = '';
@@ -752,7 +795,7 @@ const options = computed<CalendarOptions>(() => ({
         luxonPlugin,
     ],
     locale: ptBrLocale,
-    timeZone: shop.value?.timezone,
+    timeZone: DISPLAY_TIMEZONE,
     initialDate: shop.value?.today,
     initialView:
         typeof window !== 'undefined' &&
@@ -784,6 +827,17 @@ const options = computed<CalendarOptions>(() => ({
     eventInteractive: true,
     editable: !busy.value,
     selectable: !busy.value && Boolean(shop.value?.barbers.length),
+    selectAllow: (selection) =>
+        !isPastSelection({
+            start: selection.allDay
+                ? `${selection.startStr.slice(0, 10)}T00:00`
+                : localTime(selection.start.toISOString()),
+            end: selection.endStr,
+            startsAt: selection.start.getTime(),
+            allDay: selection.allDay,
+            durationMinutes: null,
+        }),
+    eventAllow: (selection) => selection.start.getTime() > Date.now(),
     selectMirror: true,
     longPressDelay: 400,
     eventTimeFormat: { hour: '2-digit', minute: '2-digit', hour12: false },
@@ -842,12 +896,14 @@ const options = computed<CalendarOptions>(() => ({
             ? {
                   start: `${info.startStr}T00:00`,
                   end: `${info.endStr}T00:00`,
+                  startsAt: info.start.getTime(),
                   allDay: true,
                   durationMinutes: null,
               }
             : {
                   start: localTime(info.start.toISOString()),
                   end: localTime(info.end.toISOString()),
+                  startsAt: info.start.getTime(),
                   allDay: false,
                   durationMinutes: Math.round(
                       (info.end.getTime() - info.start.getTime()) / 60_000,
@@ -858,7 +914,7 @@ const options = computed<CalendarOptions>(() => ({
             calendarSelection.value = selection;
             rangeChoiceOpen.value = true;
         } else {
-            showBlock(selection.start, selection.end);
+            showBlock(selection.start, selection.end, selection.allDay);
         }
 
         calendar.value?.getApi().unselect();
@@ -960,8 +1016,7 @@ const options = computed<CalendarOptions>(() => ({
                 <div>
                     <h2 class="text-lg font-semibold">{{ shop.name }}</h2>
                     <p class="text-xs text-muted-foreground">
-                        Horários no fuso {{ shop.timezone }}. Bloqueios valem em
-                        todas as unidades do barbeiro.
+                        Bloqueios valem em todas as unidades do barbeiro.
                     </p>
                 </div>
                 <div class="flex flex-wrap items-end gap-3">
@@ -1092,7 +1147,10 @@ const options = computed<CalendarOptions>(() => ({
                 <div class="grid gap-3 sm:grid-cols-2">
                     <Button
                         :disabled="
-                            busy || !shop?.is_open || !shop?.barbers.length
+                            busy ||
+                            !shop?.is_open ||
+                            !shop?.barbers.length ||
+                            isPastSelection(calendarSelection)
                         "
                         @click="chooseCalendarAction('appointment')"
                     >
@@ -1101,13 +1159,24 @@ const options = computed<CalendarOptions>(() => ({
                     </Button>
                     <Button
                         variant="outline"
-                        :disabled="busy || !shop?.barbers.length"
+                        :disabled="
+                            busy ||
+                            !shop?.barbers.length ||
+                            isPastSelection(calendarSelection)
+                        "
                         @click="chooseCalendarAction('block')"
                     >
                         <LockKeyhole class="size-4" />
                         Bloqueio
                     </Button>
                 </div>
+                <p
+                    v-if="isPastSelection(calendarSelection)"
+                    class="text-sm text-muted-foreground"
+                >
+                    Não é possível criar agendamentos ou bloqueios no passado.
+                    Selecione uma data e um horário futuros.
+                </p>
                 <p v-if="!shop?.is_open" class="text-sm text-muted-foreground">
                     A unidade está fechada; ainda é possível criar um bloqueio
                     de agenda.
@@ -1129,8 +1198,7 @@ const options = computed<CalendarOptions>(() => ({
                     <DialogTitle>Novo agendamento</DialogTitle>
                     <DialogDescription>
                         Registre uma reserva recebida por telefone, WhatsApp ou
-                        outro canal. Os horários seguem o fuso de
-                        {{ shop?.name }}.
+                        outro canal.
                     </DialogDescription>
                 </DialogHeader>
                 <p
@@ -1644,6 +1712,7 @@ const options = computed<CalendarOptions>(() => ({
                                 }}</Button
                             >
                             <Button
+                                v-if="selected.details.canCheckout"
                                 type="button"
                                 variant="outline"
                                 class="col-span-2 h-auto min-h-9 whitespace-normal"
@@ -1951,9 +2020,16 @@ const options = computed<CalendarOptions>(() => ({
                             id="block-date"
                             v-model="blockDate"
                             type="date"
+                            :min="
+                                localTime(new Date().toISOString()).slice(0, 10)
+                            "
                             required
                             :disabled="busy"
                         />
+                        <p class="text-xs text-muted-foreground">
+                            Ao fechar o dia de hoje, o bloqueio começa agora e
+                            termina no fim do dia.
+                        </p>
                     </div>
                     <template v-else>
                         <div class="space-y-2">
@@ -1962,6 +2038,7 @@ const options = computed<CalendarOptions>(() => ({
                                 id="block-start"
                                 v-model="start"
                                 type="datetime-local"
+                                :min="localTime(new Date().toISOString())"
                                 required
                                 :disabled="busy"
                             />

@@ -390,7 +390,7 @@ class ScheduleTest extends TestCase
         $this->postJson('/schedule/blocks', $data)->assertCreated();
         $this->assertDatabaseCount('blocked_times', 2);
         $this->assertDatabaseHas('blocked_times', [
-            'user_id' => $this->barber->id, 'start_datetime' => '2026-11-09 03:00:00', 'end_datetime' => '2026-11-10 03:00:00',
+            'user_id' => $this->barber->id, 'start_datetime' => '2026-11-09 11:00:00', 'end_datetime' => '2026-11-10 03:00:00',
         ]);
         $this->barber->barbershops()->attach($this->other);
         $this->events(['barbershop_id' => $this->other->id])->assertOk()->assertJsonCount(1);
@@ -426,6 +426,42 @@ class ScheduleTest extends TestCase
         ]))->assertUnprocessable();
     }
 
+    public function test_blocks_reject_past_intervals_on_create_and_update(): void
+    {
+        $this->actingAs($this->admin);
+        $this->postJson('/schedule/blocks', $this->block())->assertCreated();
+        $block = BlockedTime::firstOrFail();
+        foreach ([
+            ['start' => '2026-11-08T09:00', 'end' => '2026-11-08T10:00'],
+            ['start' => '2026-11-09T07:59', 'end' => '2026-11-09T10:00'],
+            ['start' => '2026-11-09T08:00', 'end' => '2026-11-09T10:00'],
+            ['full_day' => true, 'date' => '2026-11-08'],
+        ] as $invalid) {
+            $payload = $this->block($invalid);
+            $this->postJson('/schedule/blocks', $payload)->assertUnprocessable();
+            $this->patchJson('/schedule/blocks/'.$block->id, $payload)->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('blocked_times', 1);
+        $this->assertSame('2026-11-09 12:00:00', $block->fresh()->start_datetime->format('Y-m-d H:i:s'));
+    }
+
+    public function test_closing_today_only_blocks_remaining_time_in_the_unit_timezone(): void
+    {
+        $this->shop->update(['timezone' => 'America/Los_Angeles']);
+        $this->travelTo(CarbonImmutable::parse('2026-11-09 23:30', $this->shop->timezone)->utc());
+        $this->actingAs($this->barber);
+        $this->postJson('/schedule/blocks', $this->block([
+            'full_day' => true, 'date' => '2026-11-08',
+        ]))->assertUnprocessable()->assertJsonValidationErrors('date');
+        $this->postJson('/schedule/blocks', $this->block([
+            'full_day' => true, 'date' => '2026-11-09',
+        ]))->assertCreated();
+        $block = BlockedTime::firstOrFail();
+        $this->assertSame('2026-11-10 07:30:00', $block->start_datetime->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-11-10 08:00:00', $block->end_datetime->format('Y-m-d H:i:s'));
+        $this->assertSame(30.0, $block->start_datetime->diffInMinutes($block->end_datetime));
+    }
+
     public function test_guest_cannot_access_or_mutate_schedule(): void
     {
         $this->get('/schedule')->assertRedirect('/login');
@@ -433,8 +469,33 @@ class ScheduleTest extends TestCase
         $this->postJson('/schedule/blocks', $this->block())->assertUnauthorized();
     }
 
+    public function test_manual_booking_rejects_past_dates_elapsed_slots_and_the_current_instant(): void
+    {
+        $this->shop->update(['timezone' => 'America/Los_Angeles']);
+        $this->travelTo(CarbonImmutable::parse('2026-11-09 09:40', $this->shop->timezone)->utc());
+        $this->actingAs($this->admin);
+        $payload = [
+            'barbershop_id' => $this->shop->id,
+            'name' => 'Cliente', 'email' => 'cliente@example.com', 'phone' => '11999991234',
+            'service_id' => $this->service->id, 'barber_id' => $this->barber->id,
+            'date' => '2026-11-09', 'time' => '09:00',
+        ];
+        foreach ([
+            ['date' => '2026-11-08'],
+            ['time' => '09:00'],
+            ['time' => '09:40'],
+        ] as $invalid) {
+            $this->postJson('/schedule/appointments', [...$payload, ...$invalid])->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('appointments', 0);
+        $this->assertDatabaseCount('clients', 0);
+        $this->assertDatabaseCount('notifications', 0);
+        $this->postJson('/schedule/appointments', [...$payload, 'time' => '10:20'])->assertCreated();
+    }
+
     public function test_checkout_records_historical_values_and_locks_the_appointment(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-09 10:00', 'America/Sao_Paulo')->utc());
         $appointment = $this->appointment();
         $secondService = Service::create([
             'barbershop_id' => $this->shop->id, 'name' => 'Barba', 'description' => 'Barba',
@@ -487,6 +548,7 @@ class ScheduleTest extends TestCase
 
     public function test_checkout_validates_authorization_prices_discounts_and_product_unit(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-09 10:00', 'America/Sao_Paulo')->utc());
         $appointment = $this->appointment();
         $product = Product::create([
             'barbershop_id' => $this->shop->id, 'name' => 'Pomada', 'brand' => 'Marca',
@@ -530,6 +592,7 @@ class ScheduleTest extends TestCase
 
     public function test_checkout_accepts_all_payment_methods_and_rejects_non_pending_appointments(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-09 10:00', 'America/Sao_Paulo')->utc());
         $this->actingAs($this->admin);
         foreach (['credit_card', 'debit_card', 'pix', 'cash'] as $method) {
             $appointment = $this->appointment();
@@ -555,5 +618,33 @@ class ScheduleTest extends TestCase
             'products' => [], 'discount_cents' => 0, 'payment_method' => 'pix',
         ])->assertUnprocessable();
         $this->assertDatabaseCount('appointment_checkouts', 4);
+    }
+
+    public function test_checkout_is_forbidden_until_the_exact_appointment_start_time(): void
+    {
+        $appointment = $this->appointment();
+        $this->actingAs($this->admin);
+        $payload = [
+            'barbershop_id' => $this->shop->id, 'version' => $this->version($appointment),
+            'services_total_cents' => 5000,
+            'services' => [['id' => $this->service->id, 'price_cents' => 5000]],
+            'products' => [], 'discount_cents' => 0, 'payment_method' => 'pix',
+        ];
+        $url = '/schedule/appointments/'.$appointment->id.'/checkout';
+
+        foreach ([$appointment->start_time->copy()->subDay(), $appointment->start_time->copy()->subSecond()] as $now) {
+            $this->travelTo($now);
+            $this->events()->assertOk()->assertJsonPath('0.extendedProps.canCheckout', false);
+            $this->postJson($url, $payload)->assertUnprocessable()->assertJsonValidationErrors('start_time');
+            $this->assertDatabaseCount('appointment_checkouts', 0);
+            $this->assertSame('scheduled', $appointment->fresh()->status);
+        }
+
+        $this->travelTo($appointment->start_time);
+        $this->events()->assertOk()->assertJsonPath('0.extendedProps.canCheckout', true);
+        $this->actingAs($this->barber);
+        $this->events()->assertOk()->assertJsonPath('0.extendedProps.canCheckout', false);
+        $this->actingAs($this->admin)->postJson($url, $payload)->assertOk();
+        $this->events()->assertOk()->assertJsonPath('0.extendedProps.canCheckout', false);
     }
 }

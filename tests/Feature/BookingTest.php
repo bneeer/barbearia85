@@ -172,6 +172,29 @@ class BookingTest extends TestCase
         $this->availability($this->selection($shop, $service))->assertOk()->assertJsonPath('slots', []);
     }
 
+    public function test_direct_confirmation_rejects_past_dates_elapsed_slots_and_the_current_instant(): void
+    {
+        $shop = $this->shop();
+        $shop->update(['timezone' => 'America/Los_Angeles']);
+        $service = $this->service($shop);
+        $barber = $this->barber($shop, $service);
+        $this->travelTo(CarbonImmutable::parse('2026-11-09 09:40', $shop->timezone)->utc());
+
+        foreach ([
+            ['date' => '2026-11-08', 'time' => '09:00'],
+            ['time' => '09:00'],
+            ['time' => '09:40'],
+        ] as $invalid) {
+            $this->postJson('/agendar', $this->booking($shop, $service, $barber, $invalid))
+                ->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('appointments', 0);
+        $this->assertDatabaseCount('clients', 0);
+        $this->assertDatabaseCount('notifications', 0);
+        $this->postJson('/agendar', $this->booking($shop, $service, $barber, ['time' => '10:20']))
+            ->assertCreated();
+    }
+
     public function test_confirmation_persists_utc_times_and_two_pending_notification_payloads_atomically(): void
     {
         $shop = $this->shop();

@@ -257,6 +257,9 @@ class ScheduleController extends Controller
                             'discount_cents', 'total_cents', 'payment_method', 'notes',
                         ]) : null,
                     'status' => $appointment->status, 'notes' => $appointment->notes,
+                    'canCheckout' => $request->user()->isAdmin()
+                        && $appointment->status === 'scheduled'
+                        && $appointment->start_time->lte(CarbonImmutable::now()),
                     'version' => $this->appointmentVersion($appointment),
                 ],
             ]);
@@ -312,6 +315,9 @@ class ScheduleController extends Controller
             abort_unless(hash_equals($this->appointmentVersion($appointment), $data['version']), 409, 'O agendamento foi alterado. Atualize o calendário.');
             if ($appointment->status !== 'scheduled' || $appointment->checkout()->exists()) {
                 throw ValidationException::withMessages(['status' => 'Somente agendamentos pendentes podem ser finalizados.']);
+            }
+            if ($appointment->start_time->gt(CarbonImmutable::now())) {
+                throw ValidationException::withMessages(['start_time' => 'Não é possível finalizar um atendimento antes do horário de início do agendamento.']);
             }
             $services = $appointment->services()->withoutGlobalScope(BarbershopScope::class)->lockForUpdate()->get();
             if ($services->isEmpty()) {
@@ -371,7 +377,7 @@ class ScheduleController extends Controller
         $start = CarbonImmutable::createFromFormat('!Y-m-d\TH:i', $data['start'], $shop->timezone);
         $end = CarbonImmutable::createFromFormat('!Y-m-d\TH:i', $data['end'], $shop->timezone);
         if ($start->format('Y-m-d\TH:i') !== $data['start'] || $end->format('Y-m-d\TH:i') !== $data['end'] || $end->lte($start)) {
-            throw ValidationException::withMessages(['start' => 'Intervalo inválido no fuso horário da unidade.']);
+            throw ValidationException::withMessages(['start' => 'Intervalo inválido.']);
         }
 
         return [$start, $end];
@@ -488,9 +494,20 @@ class ScheduleController extends Controller
         } else {
             [$start, $end] = $this->interval($request, $shop);
         }
-        DB::transaction(function () use ($barbers, $block, $start, $end, $data) {
+        DB::transaction(function () use ($barbers, $block, $start, $end, $data, $shop) {
             foreach ($barbers as $barber) {
                 User::whereKey($barber->id)->lockForUpdate()->firstOrFail();
+            }
+            $now = CarbonImmutable::now($shop->timezone);
+            if ($data['full_day'] ?? false) {
+                if ($start->lt($now->startOfDay())) {
+                    throw ValidationException::withMessages(['date' => 'Não é possível bloquear dias passados.']);
+                }
+                if ($start->lt($now)) {
+                    $start = $now;
+                }
+            } elseif ($start->lte($now)) {
+                throw ValidationException::withMessages(['start' => 'Escolha um horário futuro para iniciar o bloqueio.']);
             }
             if ($block) {
                 $block->refresh();
