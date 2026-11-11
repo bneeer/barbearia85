@@ -37,7 +37,7 @@ defineOptions({
     <div class="space-y-6 p-4 md:p-6">
         <div class="flex flex-wrap items-center justify-between gap-4">
             <div>
-                <h1 class="text-2xl font-semibold">Unidades</h1>
+                <h1 class="text-2xl font-semibold">Barbearias</h1>
                 <p class="text-sm text-muted-foreground">
                     Gerencie as barbearias, seus horários e equipes.
                 </p>

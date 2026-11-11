@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Group, Home, Scissor } from '@iconoir/vue';
+import { Group, Home, Scissor, Shop } from '@iconoir/vue';
 import { Link } from '@inertiajs/vue3';
 import { CalendarDays, Mail, Package } from 'lucide-vue-next';
 import AppLogo from '@/components/AppLogo.vue';
@@ -22,12 +22,6 @@ const { isAdmin } = useAuth();
 
 const mainNavItems: NavItem[] = [
     {
-        title: 'Notificações',
-        href: '/notifications',
-        icon: Mail,
-        requiresAdmin: true,
-    },
-    {
         title: 'Início',
         href: dashboard(),
         icon: Home,
@@ -44,9 +38,9 @@ const mainNavItems: NavItem[] = [
         requiresAdmin: true,
     },
     {
-        title: 'Unidades',
+        title: 'Barbearias',
         href: '/barbershops',
-        icon: Home,
+        icon: Shop,
         requiresAdmin: true,
     },
     {
@@ -59,6 +53,12 @@ const mainNavItems: NavItem[] = [
         title: 'Produtos',
         href: '/products',
         icon: Package,
+        requiresAdmin: true,
+    },
+    {
+        title: 'Notificações',
+        href: '/notifications',
+        icon: Mail,
         requiresAdmin: true,
     },
 ];
