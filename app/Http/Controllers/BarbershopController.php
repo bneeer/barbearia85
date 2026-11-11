@@ -60,6 +60,7 @@ class BarbershopController extends Controller
             'phones' => ['sometimes', 'array'],
             'phones.*' => ['required', 'string', 'max:64', 'distinct', new InternationalPhone],
             'is_open' => ['required', 'boolean'],
+            'cancellation_notice_hours' => ['sometimes', 'required', 'integer', 'min:0', 'max:2147483647'],
             'opening_hours' => ['required', 'array:'.implode(',', $dayKeys)],
             'barber_ids' => ['sometimes', 'array'],
             'barber_ids.*' => ['required', 'integer', 'distinct', Rule::exists('users', 'id')->where('role', 'barber')],
@@ -68,12 +69,16 @@ class BarbershopController extends Controller
         foreach ($dayKeys as $day) {
             $rules["opening_hours.$day"] = ['required', 'array:open,close,closed'];
             $rules["opening_hours.$day.open"] = ['required', 'date_format:H:i'];
-            $rules["opening_hours.$day.close"] = ['required', 'date_format:H:i'];
+            $rules["opening_hours.$day.close"] = [
+                'required', 'date_format:H:i',
+                Rule::when(! $request->boolean("opening_hours.$day.closed"), "after:opening_hours.$day.open"),
+            ];
             $rules["opening_hours.$day.closed"] = ['required', 'boolean'];
         }
 
         $data = $request->validate($rules, [
             'zip_code.regex' => 'Informe um CEP válido no formato 00000-000.',
+            'opening_hours.*.close.after' => 'O fechamento deve ser depois da abertura.',
         ]);
 
         $normalizedPhones = [];
@@ -88,15 +93,6 @@ class BarbershopController extends Controller
         }
         if (array_key_exists('phones', $data)) {
             $data['phones'] = $normalizedPhones;
-        }
-
-        foreach ($dayKeys as $day) {
-            $hours = $data['opening_hours'][$day];
-            if (! $hours['closed'] && $hours['open'] >= $hours['close']) {
-                throw ValidationException::withMessages([
-                    "opening_hours.$day.close" => 'O fechamento deve ser depois da abertura.',
-                ]);
-            }
         }
 
         $data['zip_code'] = preg_replace('/\D/', '', $data['zip_code']);

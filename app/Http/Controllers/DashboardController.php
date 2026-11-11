@@ -69,11 +69,11 @@ class DashboardController extends Controller
             ];
         }
 
-        $payment_methods = [
-            'credit_card' => "Cartão de Crédito",
-            'debit_card' => "Cartão de Débito",
-            'pix' => "PIX",
-            'cash' => "Dinheiro"
+        $paymentMethods = [
+            'credit_card' => 'Cartão de Crédito',
+            'debit_card' => 'Cartão de Débito',
+            'pix' => 'PIX',
+            'cash' => 'Dinheiro',
         ];
 
         $spreadsheet = new Spreadsheet;
@@ -81,7 +81,7 @@ class DashboardController extends Controller
         $sheet->setTitle('Atendimentos');
         $this->writeSpreadsheetRow($sheet, 1, $headers);
         $row = 2;
-        $query->chunk(500, function ($appointments) use ($sheet, &$row, $admin) {
+        $query->chunk(500, function ($appointments) use ($sheet, &$row, $admin, $paymentMethods) {
             foreach ($appointments as $appointment) {
                 $client = $appointment->client;
                 $checkout = $appointment->checkout;
@@ -108,15 +108,20 @@ class DashboardController extends Controller
                     $values = [
                         ...$values,
                         $products,
-                        $checkout?->services_total_cents ? floatval($checkout?->services_total_cents / 100) : '',
-                        $checkout?->products_total_cents ? floatval($checkout?->products_total_cents / 100) : '',
-                        $checkout?->discount_cents ? floatval($checkout?->discount_cents / 100) : '',
-                        $checkout?->total_cents ? floatval($checkout?->total_cents / 100) : '',
-                        $payment_methods[$checkout?->payment_method] ?? '',
+                        '', '', '', '',
+                        $paymentMethods[$checkout?->payment_method] ?? '',
                         $checkout?->notes ?? '',
                     ];
                 }
-                $this->writeSpreadsheetRow($sheet, $row++, $values);
+                $this->writeSpreadsheetRow($sheet, $row, $values);
+                if ($admin && $checkout) {
+                    foreach (['services_total_cents', 'products_total_cents', 'discount_cents', 'total_cents'] as $index => $field) {
+                        $cell = $sheet->getCell(Coordinate::stringFromColumnIndex(12 + $index).$row);
+                        $cell->setValueExplicit($checkout->{$field} / 100, DataType::TYPE_NUMERIC);
+                        $cell->getStyle()->getNumberFormat()->setFormatCode('[$R$-416] #,##0.00');
+                    }
+                }
+                $row++;
             }
         });
 

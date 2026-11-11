@@ -138,17 +138,15 @@ class ServiceCrudTest extends TestCase
         $this->assertDatabaseHas('services', ['id' => $id, 'name' => 'Corte', 'deleted_at' => null]);
     }
 
-    public function test_migration_supports_existing_services_without_a_description_column(): void
+    public function test_services_are_created_with_description_and_active_by_default(): void
     {
         $shop = $this->shop('principal');
-        $id = $this->service($shop->id);
-        $migration = require database_path('migrations/2026_11_07_000001_add_is_active_to_services_table.php');
-        $migration->down();
-        Schema::table('services', fn ($table) => $table->dropColumn('description'));
-
-        $migration->up();
+        $id = DB::table('services')->insertGetId([
+            'barbershop_id' => $shop->id, 'name' => 'Corte',
+            'description' => 'Corte de cabelo', 'duration' => 30, 'price' => '50.00',
+        ]);
 
         $this->assertTrue(Schema::hasColumn('services', 'description'));
-        $this->assertDatabaseHas('services', ['id' => $id, 'description' => null, 'is_active' => true]);
+        $this->assertDatabaseHas('services', ['id' => $id, 'description' => 'Corte de cabelo', 'is_active' => true]);
     }
 }

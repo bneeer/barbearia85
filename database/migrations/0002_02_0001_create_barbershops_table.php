@@ -13,6 +13,13 @@ return new class extends Migration
             $table->string('name');
             $table->string('slug')->unique();
             $table->string('timezone')->default('America/Sao_Paulo');
+            $table->text('description')->nullable();
+            $table->string('address')->nullable();
+            $table->string('zip_code', 8)->nullable();
+            $table->json('opening_hours')->nullable();
+            $table->boolean('is_open')->default(true);
+            $table->json('phones')->nullable();
+            $table->unsignedInteger('cancellation_notice_hours')->default(12);
             $table->timestamps();
         });
     }

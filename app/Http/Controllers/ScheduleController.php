@@ -6,7 +6,6 @@ use App\Models\Appointment;
 use App\Models\Barbershop;
 use App\Models\BlockedTime;
 use App\Models\Client;
-use App\Models\Notification;
 use App\Models\Product;
 use App\Models\Scopes\BarbershopScope;
 use App\Models\Service;
@@ -432,17 +431,7 @@ class ScheduleController extends Controller
             if ($changed) {
                 app(BookingNotifications::class)->changed($appointment, $shop, $previousStart);
             }
-            $notifications = Notification::where('appointment_id', $appointment->id)
-                ->where('type', 'whatsapp')->where('status', 'pending')->get();
-            foreach ($notifications as $notification) {
-                $payload = $notification->payload;
-                $payload['starts_at'] = $appointment->start_time->setTimezone($shop->timezone)->toIso8601String();
-                $payload['status'] = $appointment->status;
-                $notification->update([
-                    'payload' => $payload,
-                    'template' => $appointment->status === 'cancelled' ? 'booking_cancellation' : 'booking_confirmation',
-                ]);
-            }
+            app(BookingNotifications::class)->synchronizePendingWhatsApp($appointment, $shop);
         }, 3);
 
         return response()->json(['message' => 'Agendamento atualizado.']);

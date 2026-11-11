@@ -14,7 +14,19 @@ class NotificationEmail extends Mailable
 
     public function render(): string
     {
-        return view('mail.notification', $this->data())->render();
+        return view($this->htmlView(), $this->data())->render();
+    }
+
+    private function htmlView(): string
+    {
+        return $this->record->template === 'booking_cancellation_request'
+            ? 'mail.cancellation-request' : 'mail.notification';
+    }
+
+    public function textView(): string
+    {
+        return $this->record->template === 'booking_cancellation_request'
+            ? 'mail.cancellation-request-text' : 'mail.notification-text';
     }
 
     public function envelope(): Envelope
@@ -25,8 +37,8 @@ class NotificationEmail extends Mailable
     public function content(): Content
     {
         return new Content(
-            view: 'mail.notification',
-            text: 'mail.notification-text',
+            view: $this->htmlView(),
+            text: $this->textView(),
             with: $this->data(),
         );
     }
@@ -40,6 +52,7 @@ class NotificationEmail extends Mailable
             'booking_confirmation' => 'Agendamento confirmado',
             'booking_rescheduled' => 'Agendamento reagendado',
             'booking_cancellation' => 'Agendamento cancelado',
+            'booking_cancellation_request' => 'Seus agendamentos e opções de cancelamento',
             default => throw new \LogicException('Unknown email template.'),
         };
     }
@@ -47,6 +60,14 @@ class NotificationEmail extends Mailable
     public function data(): array
     {
         $payload = $this->record->payload ?? [];
+        if ($this->record->template === 'booking_cancellation_request') {
+            return [
+                'title' => $this->title(),
+                'appointments' => $payload['appointments'],
+                'links' => $this->record->secret['links'] ?? [],
+                'expiresAt' => $this->record->expires_at->setTimezone(config('app.display_timezone', 'America/Sao_Paulo'))->format('d/m/Y H:i T'),
+            ];
+        }
         $account = in_array($this->record->template, ['verify_email', 'reset_password', 'password_changed']);
         $description = match ($this->record->template) {
             'verify_email' => 'Confirme seu endereço de e-mail para acessar sua conta com segurança.',

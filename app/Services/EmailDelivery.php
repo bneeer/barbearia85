@@ -71,7 +71,7 @@ class EmailDelivery
                     'from' => config('mail.from.name').' <'.config('mail.from.address').'>',
                     'to' => [$record->recipient], 'subject' => $mail->title(),
                     'html' => $mail->render(),
-                    'text' => view('mail.notification-text', $mail->data())->render(),
+                    'text' => view($mail->textView(), $mail->data())->render(),
                 ];
                 $record->save();
             }
@@ -93,7 +93,7 @@ class EmailDelivery
 
     public function ineligible(Notification $record): ?string
     {
-        if ($record->expires_at?->isPast()) {
+        if ($record->expires_at?->lte(now())) {
             return 'expired';
         }
         if ($record->appointment_id) {

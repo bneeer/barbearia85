@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { ArrowRight, Calendar, LogIn } from '@iconoir/vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import { useIntervalFn, usePreferredReducedMotion } from '@vueuse/core';
 import { computed, ref } from 'vue';
+import InputError from '@/components/InputError.vue';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Toaster } from '@/components/ui/sonner';
 import { booking, dashboard, login } from '@/routes';
 
 const props = defineProps<{ photos: { url: string }[] }>();
@@ -11,6 +16,15 @@ const slides = computed(() =>
 );
 const activeSlide = ref(0);
 const reducedMotion = usePreferredReducedMotion();
+const showCancellation = ref(false);
+const cancellationForm = useForm({ email: '' });
+
+function requestCancellation() {
+    cancellationForm.post('/cancelar-agendamento', {
+        preserveScroll: true,
+        onSuccess: () => cancellationForm.reset(),
+    });
+}
 
 useIntervalFn(() => {
     if (reducedMotion.value !== 'reduce' && slides.value.length > 1) {
@@ -20,6 +34,7 @@ useIntervalFn(() => {
 </script>
 
 <template>
+    <Toaster />
     <Head title="A tradição do corte, a modernidade do estilo.">
         <meta
             name="description"
@@ -95,6 +110,54 @@ useIntervalFn(() => {
                     Agendar Horário
                     <ArrowRight class="size-5" aria-hidden="true" />
                 </Link>
+                <button
+                    type="button"
+                    class="mt-4 rounded px-4 py-2 text-sm text-white underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-primary"
+                    :aria-expanded="showCancellation"
+                    aria-controls="cancellation-request"
+                    @click="showCancellation = !showCancellation"
+                >
+                    Cancelar um agendamento
+                </button>
+                <form
+                    v-if="showCancellation"
+                    id="cancellation-request"
+                    class="mt-4 w-full max-w-md space-y-3 rounded-xl border border-white/25 bg-background p-5 text-left"
+                    @submit.prevent="requestCancellation"
+                >
+                    <Label for="cancellation-email"
+                        >E-mail usado no agendamento</Label
+                    >
+                    <Input
+                        id="cancellation-email"
+                        v-model="cancellationForm.email"
+                        type="email"
+                        autocomplete="email"
+                        maxlength="255"
+                        required
+                        :aria-invalid="!!cancellationForm.errors.email"
+                        aria-describedby="cancellation-email-error"
+                    />
+                    <InputError
+                        id="cancellation-email-error"
+                        :message="cancellationForm.errors.email"
+                    />
+                    <p class="text-sm text-muted-foreground">
+                        Enviaremos as informações para você confirmar o
+                        cancelamento por e-mail.
+                    </p>
+                    <Button
+                        type="submit"
+                        class="w-full"
+                        :disabled="cancellationForm.processing"
+                    >
+                        {{
+                            cancellationForm.processing
+                                ? 'Solicitando...'
+                                : 'Solicitar cancelamento'
+                        }}
+                    </Button>
+                </form>
             </div>
         </main>
     </div>

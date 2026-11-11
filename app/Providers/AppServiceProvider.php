@@ -4,10 +4,13 @@ namespace App\Providers;
 
 use App\Notifications\AccountEmailChannel;
 use Carbon\CarbonImmutable;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Notifications\ChannelManager;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
@@ -28,6 +31,18 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        RateLimiter::for('booking-cancellation-request', function (Request $request) {
+            $email = $request->input('email');
+            $email = is_string($email) ? mb_strtolower(trim($email)) : '';
+            $response = fn (Request $request, array $headers) => redirect()->route('home')
+                ->withErrors(['email' => 'Aguarde um minuto antes de solicitar outro e-mail.'])
+                ->withHeaders($headers);
+
+            return [
+                Limit::perMinute(5)->by('cancellation-ip:'.$request->ip())->response($response),
+                Limit::perMinute(1)->by('cancellation-email:'.hash('sha256', $email))->response($response),
+            ];
+        });
         app(ChannelManager::class)->extend('mail',
             fn ($app) => $app->make(AccountEmailChannel::class));
 

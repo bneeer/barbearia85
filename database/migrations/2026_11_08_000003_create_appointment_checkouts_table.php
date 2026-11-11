@@ -19,6 +19,7 @@ return new class extends Migration
             $table->unsignedBigInteger('discount_cents');
             $table->unsignedBigInteger('total_cents');
             $table->string('payment_method', 20);
+            $table->text('notes')->nullable();
             $table->timestamps();
         });
     }

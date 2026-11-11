@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\BarberController;
 use App\Http\Controllers\BarbershopController;
+use App\Http\Controllers\BookingCancellationController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NotificationController;
@@ -20,6 +21,14 @@ Route::get('/', fn () => Inertia::render('Welcome', [
 ]))->name('home');
 
 Route::get('agendar', [BookingController::class, 'index'])->name('booking');
+Route::post('cancelar-agendamento', [BookingCancellationController::class, 'store'])
+    ->middleware('throttle:booking-cancellation-request')->name('booking.cancellation.request');
+Route::get('cancelar-agendamento/{token}/{target}', [BookingCancellationController::class, 'show'])
+    ->where('token', '[a-f0-9]{64}')->where('target', 'all|[1-9][0-9]*')
+    ->middleware('throttle:60,1,booking-cancellation-link')->name('booking.cancellation.show');
+Route::post('cancelar-agendamento/{token}/{target}', [BookingCancellationController::class, 'confirm'])
+    ->where('token', '[a-f0-9]{64}')->where('target', 'all|[1-9][0-9]*')
+    ->middleware('throttle:20,1,booking-cancellation-confirm')->name('booking.cancellation.confirm');
 Route::get('agendar/disponibilidade', [BookingController::class, 'availability'])
     ->middleware('throttle:120,1,booking-availability')->name('booking.availability');
 Route::post('agendar', [BookingController::class, 'store'])

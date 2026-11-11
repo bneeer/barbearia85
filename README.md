@@ -17,6 +17,7 @@ Aplicação web para apresentar a Barbearia 85 e permitir que clientes agendem s
 - Resumo financeiro administrativo com ticket médio, descontos e distribuição por forma de pagamento, usando somente fechamentos registrados. Esses valores não confirmam processamento nem recebimento. O switch “Exibir valores financeiros” controla sua apresentação, os valores da tabela, indicadores por barbeiro e previsões no pop-up; informações financeiras não são enviadas a barbeiros e filtros financeiros continuam proibidos para esse perfil.
 - Cards por barbeiro mostram concluídos, agendados, cancelados e faltas no intervalo selecionado. Clicar em concluídos filtra a tabela pelo período e pelo ID exato do profissional; clicar em agendados abre uma consulta rápida paginada. O pop-up também respeita intervalo, unidade e barbeiro.
 - Tabela paginada no servidor (10, 25, 50 ou 100 registros), com filtros combináveis por coluna, faixas de valores em reais para administradores, snapshots do fechamento e registros antigos claramente identificados como sem fechamento. A exportação XLSX inclui todos os atendimentos concluídos que correspondem aos filtros ativos, independentemente da página atual, e acrescenta colunas financeiras apenas para administradores.
+- No XLSX, totais de serviços/produtos, descontos e total do fechamento são células numéricas em reais, com formato monetário brasileiro (`R$`) e duas casas decimais. Zero é exportado como valor zero; registros sem fechamento ficam com essas células vazias. Textos de clientes e observações continuam explicitamente como texto, sem executar fórmulas.
 - Administradores consultam todas as unidades. Barbeiros consultam somente atendimentos atribuídos ao próprio usuário em todas as unidades às quais têm acesso; dados de colegas, fotos de colegas e valores financeiros não são consultados ou enviados. Outros perfis mantêm a página de boas-vindas.
 - Seção de Produtos (`/products`) para administradores cadastrarem, consultarem, editarem e excluírem produtos da própria unidade, com nome, marca, descrição e preço em reais. Inclui busca por nome ou marca e listagem paginada.
 - Calendário de agendamentos (`/schedule`) com seleção de unidades, filtro por barbeiro, visualizações de mês/semana/dia/lista e detalhes em dialog.
@@ -67,6 +68,12 @@ composer run setup
 
 Esse comando instala as dependências PHP e JavaScript, cria a chave da aplicação, executa as migrações e compila os recursos do frontend. A configuração inicial usa SQLite; para outra base de dados, ajuste as variáveis `DB_*` no arquivo `.env` antes de executar as migrações.
 
+### Migrations consolidadas
+
+As migrations foram consolidadas para instalações novas: colunas, índices e chaves estrangeiras são definidos nas migrations de criação, sem etapas de atualização ou backfills do esquema antigo. A criação das unidades precede a dos usuários para respeitar suas dependências; os rollbacks removem as tabelas dependentes antes das referenciadas.
+
+Este histórico substitui o anterior e **não é um caminho de atualização para bancos já migrados**. Não execute simplesmente `migrate` sobre uma base com o histórico antigo. Para um banco descartável, recrie-o explicitamente somente após conferir a conexão e autorizar a perda dos dados; para dados que precisem ser preservados, faça backup e planeje a transição do histórico separadamente. A consolidação dos arquivos não recria nem altera automaticamente a base local.
+
 Para iniciar a aplicação em ambiente de desenvolvimento:
 
 ```bash
@@ -77,15 +84,29 @@ O comando inicia o servidor Laravel, o listener das filas `notifications,default
 
 ## Notificações por e-mail (SMTP)
 
+### Cancelamento pelo cliente
+
+Na página inicial, **Cancelar um agendamento** abre um formulário na própria tela. O cliente informa o e-mail usado na reserva e recebe uma resposta genérica, sem revelar se há agendamentos para aquele endereço. A solicitação é limitada por IP e e-mail para reduzir abuso.
+
+Com o canal de e-mail habilitado, o sistema consulta todos os agendamentos pendentes futuros daquele endereço em todas as unidades, inclusive cadastros de cliente diferentes. O e-mail lista serviços, unidade, profissional, horário e prazo no fuso da unidade. Reservas fora do prazo aparecem sem botão de cancelamento, com o contato da unidade. Não é necessário criar uma conta.
+
+Administradores configuram a **Antecedência mínima para cancelamento (em horas)** no cadastro/edição de cada unidade; o padrão é **12 horas**. Zero permite cancelar até antes do início do atendimento. A política não limita cancelamentos administrativos e é revalidada na confirmação, inclusive quando alterada depois do envio do e-mail.
+
+Os links valem **1 hora**, abrem somente uma página de confirmação e exigem confirmação explícita para cancelar. “Cancelar todos” aparece apenas quando há mais de uma reserva e todas são elegíveis. O lote é atômico: se qualquer reserva deixar de ser elegível, nenhuma é cancelada nessa operação. Agendamentos combinados antigos são cancelados inteiros, sem remover serviços individuais. Reservas criadas depois da solicitação não são incluídas; alterações de horário, profissional ou titularidade exigem nova solicitação.
+
+O fluxo usa a mesma outbox SMTP, worker, scheduler e acompanhamento em **Notificações** descritos abaixo. Tokens são armazenados em hash e links/conteúdo do e-mail ficam criptografados, sem exposição na administração. A solicitação explícita permite consultar reservas antigas sem ativar suas confirmações retroativas. As notificações posteriores de cancelamento mantêm as regras de ativação existentes.
+
+### Ativação e operação
+
 O canal começa **desativado**. Nunca habilite o envio com dados de demonstração ou contatos que não possam receber mensagens reais. WhatsApp continua somente registrado, sem integração de envio.
 
-1. Faça backup e aplique `php artisan migrate`. A migração amplia a outbox e preserva o histórico; não admite rollback destrutivo. No MySQL, uma falha pode deixar alterações de estrutura aplicadas sem registrar a migration como concluída. A migration permite retomar esse estado com o mesmo comando, verificando colunas, tabelas, índices e chaves estrangeiras existentes; não apague colunas nem use `migrate:fresh` para tentar novamente. Agendamentos existentes ou criados com o canal desativado ficam fora do envio por padrão, inclusive de alterações posteriores. Confirmações antigas pendentes são marcadas como ignoradas. A inclusão retroativa de reservas futuras exige o comando explícito descrito abaixo.
+1. Em uma instalação nova, aplique `php artisan migrate` para criar a outbox completa. Para bancos com o histórico antigo, observe a seção de migrations consolidadas antes de qualquer comando. Agendamentos criados com o canal desativado ficam fora do envio por padrão, inclusive de alterações posteriores. A inclusão retroativa de reservas futuras exige o comando explícito descrito abaixo.
 2. Configure `MAIL_MAILER=smtp`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` e `APP_URL` com a URL HTTPS pública correta. Use `MAIL_SCHEME=smtp` para STARTTLS (normalmente porta 587) ou `smtps` para TLS implícito (normalmente 465), conforme seu servidor. O transporte mantém a verificação de certificados; não desative TLS/verificação para contornar erros. `MAIL_TIMEOUT=20` limita operações de socket; mantenha-o abaixo do timeout do worker. Não coloque credenciais no repositório.
 3. Execute um worker supervisionado: `php artisan queue:work database --queue=notifications,default --tries=1 --timeout=30`. `NOTIFICATIONS_QUEUE_CONNECTION` é `database` por padrão, independentemente da fila padrão da aplicação. Se usar outra conexão, altere também o worker e mantenha seu `retry_after` maior que o lease de 120 segundos; no database padrão, configure `DB_QUEUE_RETRY_AFTER=180`. O claim da outbox impede consumo concorrente.
 4. Configure o scheduler para executar `php artisan schedule:run` a cada minuto. Localmente, `composer run dev` já inicia `schedule:work`. O comando `php artisan notifications:dispatch` também permite disparar uma varredura manual de mensagens pendentes e identificar envios interrompidos.
 5. Somente depois de SMTP, fila e scheduler estarem prontos, defina `NOTIFICATIONS_EMAIL_ENABLED=true`, recarregue o cache de configuração (`php artisan config:cache`) e reinicie os workers (`php artisan queue:restart`). Reservas criadas com o canal habilitado passam a gerar e-mails transacionais; as anteriores só entram por inclusão retroativa explícita.
 
-Para substituir uma instalação anterior, atualize as dependências com `composer install`, remova as variáveis antigas `RESEND_API_KEY` e `RESEND_WEBHOOK_SECRET` do ambiente e desative o webhook no painel antigo. A rota de webhook e o SDK foram removidos. As tabelas, IDs e eventos históricos existentes são preservados, sem nova migração destrutiva. Interrompa os workers antigos antes da troca para não misturar os transportes. Resultados incertos pendentes do transporte anterior não são reenviados automaticamente.
+Se houver configuração do transporte anterior, remova as variáveis antigas `RESEND_API_KEY` e `RESEND_WEBHOOK_SECRET` do ambiente e desative o webhook no painel antigo. A rota de webhook e o SDK foram removidos; a tabela de eventos permanece no esquema para consulta de histórico eventualmente importado. Interrompa os workers antigos antes da troca para não misturar os transportes. Resultados incertos pendentes do transporte anterior não são reenviados automaticamente.
 
 Verificação de conta e recuperação de senha mantêm os links assinados e o password broker do Laravel/Fortify. Há também aviso de senha alterada pelos dois caminhos existentes. Links e conteúdo renderizado ficam criptografados na outbox; jobs carregam apenas IDs e a administração não recebe tokens, links nem corpo das mensagens. Links vencidos, contas verificadas ou com e-mail alterado não são reenviados. Registro público de contas continua com a configuração existente do Fortify, sem ser habilitado por esta integração.
 
@@ -144,6 +165,7 @@ php artisan test
 ```
 
 Os testes de formatação e normalização do frontend usam Node.js 22.6 ou superior: `npm run test:phone`.
+Os testes PHP recusam iniciar fora de `APP_ENV=testing`, antes de executar o refresh do banco. Use `composer test`, que limpa o cache de configuração, ou um `APP_CONFIG_CACHE` isolado ao executar PHPUnit diretamente. Confirme que o driver SQLite está habilitado para o banco em memória definido em `phpunit.xml`.
 As regras de seleção e sobreposição dos serviços públicos são cobertas por `npm run test:booking`. A outbox, o corte de ativação, as retentativas e os templates são cobertos por `EmailNotificationsTest`; o transporte SMTP e a classificação de erros são cobertos por `SmtpGatewayTest`, sem envio real a destinatários.
 
 As regras de comparação do dashboard são cobertas por `node --experimental-strip-types --test tests/frontend/dashboard-comparison.test.mjs`.

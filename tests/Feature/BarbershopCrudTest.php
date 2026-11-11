@@ -63,6 +63,7 @@ class BarbershopCrudTest extends TestCase
 
         $barbershop = Barbershop::where('name', 'Barbearia Central')->firstOrFail();
         $this->assertSame('01310100', $barbershop->zip_code);
+        $this->assertSame(12, $barbershop->cancellation_notice_hours);
         $this->assertFalse($barbershop->is_open);
         $this->assertSame(['+5511999999999', '+551133334444'], $barbershop->phones);
         $this->assertDatabaseHas('barbershop_user', [
@@ -79,16 +80,34 @@ class BarbershopCrudTest extends TestCase
         $this->put("/barbershops/$barbershop->id", $this->data([
             'name' => 'Barbearia Centro',
             'barber_ids' => [],
+            'cancellation_notice_hours' => 2,
         ]))->assertSessionHasNoErrors()->assertRedirect('/barbershops');
         $this->assertDatabaseHas('barbershops', [
             'id' => $barbershop->id,
             'name' => 'Barbearia Centro',
             'is_open' => true,
+            'cancellation_notice_hours' => 2,
         ]);
         $this->assertDatabaseMissing('barbershop_user', [
             'barbershop_id' => $barbershop->id,
             'user_id' => $barber->id,
         ]);
+    }
+
+    public function test_cancellation_notice_is_admin_only_and_must_be_a_non_negative_integer(): void
+    {
+        $shop = $this->barbershop('Centro');
+        $barber = User::factory()->create(['role' => 'barber', 'barbershop_id' => $shop->id]);
+        $this->actingAs($barber)->put("/barbershops/$shop->id", $this->data(['cancellation_notice_hours' => 0]))
+            ->assertForbidden();
+        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        foreach ([-1, 1.5, 'abc', null] as $value) {
+            $this->put("/barbershops/$shop->id", $this->data(['cancellation_notice_hours' => $value]))
+                ->assertSessionHasErrors('cancellation_notice_hours');
+        }
+        $this->put("/barbershops/$shop->id", $this->data(['cancellation_notice_hours' => 0]))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(0, $shop->fresh()->cancellation_notice_hours);
     }
 
     public function test_barber_crud_keeps_unit_assignments_in_sync(): void

@@ -23,7 +23,7 @@ class NotificationController extends Controller
         $filters = $request->validate([
             'recipient' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', Rule::in(['pending', 'processing', 'sent', 'failed', 'skipped', 'simulated'])],
-            'template' => ['nullable', Rule::in(['verify_email', 'reset_password', 'password_changed', 'booking_confirmation', 'booking_rescheduled', 'booking_cancellation'])],
+            'template' => ['nullable', Rule::in(['verify_email', 'reset_password', 'password_changed', 'booking_confirmation', 'booking_rescheduled', 'booking_cancellation', 'booking_cancellation_request'])],
             'barbershop_id' => ['nullable', 'integer', 'exists:barbershops,id'],
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', ...($request->filled('from') ? ['after_or_equal:from'] : [])],

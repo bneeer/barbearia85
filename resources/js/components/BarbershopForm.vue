@@ -45,6 +45,8 @@ const form = useForm({
         ? [...props.barbershop.phones]
         : [''],
     is_open: props.barbershop?.is_open ?? true,
+    cancellation_notice_hours:
+        props.barbershop?.cancellation_notice_hours ?? 12,
     opening_hours: props.barbershop?.opening_hours ?? props.defaultHours,
     barber_ids: props.barberIds,
 });
@@ -154,6 +156,26 @@ function removePhoto(photoId: number) {
 
 <template>
     <form class="space-y-5" novalidate @submit.prevent="submit">
+        <div class="space-y-2">
+            <Label for="cancellation-notice"
+                >Antecedência mínima para cancelamento (em horas)</Label
+            >
+            <Input
+                id="cancellation-notice"
+                v-model="form.cancellation_notice_hours"
+                type="number"
+                min="0"
+                max="2147483647"
+                step="1"
+                required
+            />
+            <p class="text-sm text-muted-foreground">
+                Válida para o autosserviço do cliente. Zero permite cancelar até
+                o início do atendimento. Não limita o cancelamento
+                administrativo.
+            </p>
+            <InputError :message="form.errors.cancellation_notice_hours" />
+        </div>
         <TabsRoot v-model="activeTab" class="space-y-5">
             <TabsList
                 aria-label="Seções do formulário da unidade"

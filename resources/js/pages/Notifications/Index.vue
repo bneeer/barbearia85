@@ -78,6 +78,7 @@ const labels: Record<string, string> = {
     booking_confirmation: 'Confirmação',
     booking_rescheduled: 'Reagendamento',
     booking_cancellation: 'Cancelamento',
+    booking_cancellation_request: 'Solicitação de cancelamento',
     client: 'Cliente',
     barber: 'Barbeiro',
     admin: 'Administrador',
@@ -232,6 +233,7 @@ defineOptions({
                             'booking_confirmation',
                             'booking_rescheduled',
                             'booking_cancellation',
+                            'booking_cancellation_request',
                         ]"
                         :key="event"
                         :value="event"

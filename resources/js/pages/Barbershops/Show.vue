@@ -40,6 +40,12 @@ defineOptions({
         <h1 class="text-2xl font-semibold">Detalhes da unidade</h1>
         <dl class="space-y-3">
             <div>
+                <dt class="text-sm text-muted-foreground">
+                    Antecedência para cancelamento pelo cliente
+                </dt>
+                <dd>{{ barbershop.cancellation_notice_hours }} horas</dd>
+            </div>
+            <div>
                 <dt class="text-sm text-muted-foreground">Nome</dt>
                 <dd>{{ barbershop.name }}</dd>
             </div>

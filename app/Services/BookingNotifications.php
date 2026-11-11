@@ -169,4 +169,19 @@ class BookingNotifications
             ]);
         }
     }
+
+    public function synchronizePendingWhatsApp(Appointment $appointment, Barbershop $shop): void
+    {
+        $notifications = Notification::where('appointment_id', $appointment->id)
+            ->where('type', 'whatsapp')->where('status', 'pending')->get();
+        foreach ($notifications as $notification) {
+            $payload = $notification->payload;
+            $payload['starts_at'] = $appointment->start_time->setTimezone($shop->timezone)->toIso8601String();
+            $payload['status'] = $appointment->status;
+            $notification->update([
+                'payload' => $payload,
+                'template' => $appointment->status === 'cancelled' ? 'booking_cancellation' : 'booking_confirmation',
+            ]);
+        }
+    }
 }

@@ -18,6 +18,7 @@ use Inertia\Inertia;
 use Inertia\Testing\AssertableInertia as Assert;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Shared\StringHelper;
 use Tests\TestCase;
 
 class DashboardTest extends TestCase
@@ -1044,6 +1045,10 @@ class DashboardTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
         $appointment = $this->completedAppointment($shop, $admin);
         $appointment->client->update(['name' => '=HYPERLINK("https://example.test")']);
+        $appointment->checkout->update([
+            'services_total_cents' => 123456, 'products_total_cents' => 789,
+            'discount_cents' => 0, 'total_cents' => 124245,
+        ]);
         $outside = $this->completedAppointment($this->shop('Norte'), $admin);
         $outside->update(['start_time' => '2026-10-10 12:00:00']);
 
@@ -1060,11 +1065,62 @@ class DashboardTest extends TestCase
         try {
             $sheet = IOFactory::load($path)->getActiveSheet();
             $this->assertSame('Nº', $sheet->getCell('A1')->getValue());
-            $this->assertSame('Total do fechamento (centavos)', $sheet->getCell('O1')->getValue());
+            $this->assertSame('Total do fechamento', $sheet->getCell('O1')->getValue());
+            foreach (['L2' => 1234.56, 'M2' => 7.89, 'N2' => 0, 'O2' => 1242.45] as $coordinate => $amount) {
+                $cell = $sheet->getCell($coordinate);
+                $this->assertSame(DataType::TYPE_NUMERIC, $cell->getDataType());
+                $this->assertEquals($amount, $cell->getValue());
+                $this->assertSame('[$R$-416] #,##0.00', $cell->getStyle()->getNumberFormat()->getFormatCode());
+            }
+            $decimal = StringHelper::getDecimalSeparator();
+            $thousands = StringHelper::getThousandsSeparator();
+            try {
+                StringHelper::setDecimalSeparator(',');
+                StringHelper::setThousandsSeparator('.');
+                $this->assertSame('R$ 1.234,56', $sheet->getCell('L2')->getFormattedValue());
+                $this->assertSame('R$ 7,89', $sheet->getCell('M2')->getFormattedValue());
+                $this->assertSame('R$ 0,00', $sheet->getCell('N2')->getFormattedValue());
+                $this->assertSame('R$ 1.242,45', $sheet->getCell('O2')->getFormattedValue());
+            } finally {
+                StringHelper::setDecimalSeparator($decimal);
+                StringHelper::setThousandsSeparator($thousands);
+            }
+            $this->assertSame('PIX', $sheet->getCell('P2')->getValue());
             $this->assertSame((string) $appointment->id, $sheet->getCell('A2')->getValue());
             $this->assertSame('=HYPERLINK("https://example.test")', $sheet->getCell('D2')->getValue());
             $this->assertSame(DataType::TYPE_STRING, $sheet->getCell('D2')->getDataType());
             $this->assertSame(2, $sheet->getHighestRow());
+        } finally {
+            unlink($path);
+        }
+    }
+
+    public function test_xlsx_export_distinguishes_zero_amounts_from_missing_checkouts(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-09T12:00:00+00:00'));
+        $shop = $this->shop();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $zero = $this->completedAppointment($shop, $admin);
+        $zero->checkout->update([
+            'services_total_cents' => 0, 'products_total_cents' => 0,
+            'discount_cents' => 0, 'total_cents' => 0,
+        ]);
+        $legacy = $this->completedAppointment($shop, $admin, false);
+        $response = $this->actingAs($admin)->get('/dashboard/export?'.http_build_query([
+            'range_from' => '2026-11-09', 'range_to' => '2026-11-09',
+        ]))->assertOk();
+        $path = tempnam(sys_get_temp_dir(), 'dashboard-xlsx-');
+        file_put_contents($path, $response->streamedContent());
+        try {
+            $sheet = IOFactory::load($path)->getActiveSheet();
+            $this->assertSame((string) $legacy->id, $sheet->getCell('A2')->getValue());
+            $this->assertSame((string) $zero->id, $sheet->getCell('A3')->getValue());
+            foreach (['L', 'M', 'N', 'O'] as $column) {
+                $this->assertNull($sheet->getCell($column.'2')->getValue());
+                $this->assertEquals(0, $sheet->getCell($column.'3')->getValue());
+                $this->assertSame(DataType::TYPE_NUMERIC, $sheet->getCell($column.'3')->getDataType());
+                $this->assertSame('[$R$-416] #,##0.00', $sheet->getCell($column.'3')->getStyle()->getNumberFormat()->getFormatCode());
+            }
         } finally {
             unlink($path);
         }

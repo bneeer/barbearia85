@@ -19,6 +19,7 @@ class Barbershop extends Model
         'phones',
         'opening_hours',
         'is_open',
+        'cancellation_notice_hours',
     ];
 
     protected function casts(): array
@@ -27,6 +28,7 @@ class Barbershop extends Model
             'opening_hours' => 'array',
             'phones' => 'array',
             'is_open' => 'boolean',
+            'cancellation_notice_hours' => 'integer',
         ];
     }
 

@@ -18,6 +18,8 @@ return new class extends Migration
             $table->dateTime('end_time');
             $table->enum('status', ['scheduled', 'completed', 'cancelled', 'no_show'])->default('scheduled');
             $table->text('notes')->nullable();
+            $table->boolean('email_notifications_enabled')->default(false);
+            $table->index(['user_id', 'start_time', 'end_time']);
             $table->timestamps();
             $table->softDeletes();
         });

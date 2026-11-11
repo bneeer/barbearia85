@@ -37,6 +37,7 @@ export type Barbershop = {
     phones: string[] | null;
     opening_hours: OpeningHours | null;
     is_open: boolean;
+    cancellation_notice_hours: number;
     users_count?: number;
     users?: BarbershopBarber[];
     photos?: BarbershopPhoto[];
