@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Notifications\AccountEmailChannel;
 use Carbon\CarbonImmutable;
+use Illuminate\Notifications\ChannelManager;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +28,8 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        app(ChannelManager::class)->extend('mail',
+            fn ($app) => $app->make(AccountEmailChannel::class));
 
         App::singleton('currentBarbershopId', function () {
             return auth()->user()?->barbershop_id;
@@ -40,7 +44,7 @@ class AppServiceProvider extends ServiceProvider
                             'name' => auth()->user()->name,
                             'email' => auth()->user()->email,
                             'role' => auth()->user()->role,
-                        ]
+                        ],
                     ]
                     : null;
             },

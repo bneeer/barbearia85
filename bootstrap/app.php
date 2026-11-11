@@ -21,7 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleAppearance::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
-            ResolveTenant::class
+            ResolveTenant::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

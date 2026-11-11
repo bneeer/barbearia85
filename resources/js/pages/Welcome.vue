@@ -20,7 +20,7 @@ useIntervalFn(() => {
 </script>
 
 <template>
-    <Head title="Seu estilo, nossa tradição">
+    <Head title="A tradição do corte, a modernidade do estilo.">
         <meta
             name="description"
             content="Corte impecável, barba alinhada e um momento só seu. Viva a experiência Barbearia 85 e agende seu horário."
@@ -77,8 +77,8 @@ useIntervalFn(() => {
                 <h1
                     class="text-4xl leading-tight font-bold tracking-tight text-white sm:text-6xl lg:text-7xl"
                 >
-                    Seu estilo,<br />
-                    <span class="text-primary">nossa tradição.</span>
+                    A tradição do corte,<br />
+                    <span class="text-primary">a modernidade do estilo.</span>
                 </h1>
                 <p
                     class="mt-5 max-w-xl text-base leading-relaxed text-white/80 sm:mt-6 sm:text-lg"

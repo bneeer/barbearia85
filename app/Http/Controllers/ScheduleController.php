@@ -13,6 +13,7 @@ use App\Models\Service;
 use App\Models\User;
 use App\Rules\InternationalPhone;
 use App\Services\BookingAvailability;
+use App\Services\BookingNotifications;
 use App\Support\PhoneNumber;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -171,33 +172,9 @@ class ScheduleController extends Controller
                 'notes' => $data['notes'] ?? null,
             ]);
             $appointment->services()->sync($services->pluck('id')->all());
-            $serviceNames = $services->pluck('name')->implode(' + ');
-            $servicePrices = (float) $services->sum(fn ($service) => (float) $service->price);
-            foreach (['email', 'whatsapp'] as $channel) {
-                Notification::create([
-                    'appointment_id' => $appointment->id,
-                    'client_id' => $client->id,
-                    'type' => $channel,
-                    'template' => 'booking_confirmation',
-                    'status' => 'pending',
-                    'payload' => [
-                        'name' => $client->name,
-                        'recipient' => $channel === 'email' ? $client->email : $client->phone,
-                        'barbershop' => $shop->name,
-                        'address' => $shop->address,
-                        'phones' => $shop->phones,
-                        'service' => $serviceNames,
-                        'services' => $services->map(fn ($service) => [
-                            'name' => $service->name, 'duration' => $service->duration, 'price' => $service->price,
-                        ])->values()->all(),
-                        'duration' => $duration,
-                        'price' => $servicePrices,
-                        'barber' => $barber->name,
-                        'starts_at' => $start->toIso8601String(),
-                        'timezone' => $shop->timezone,
-                    ],
-                ]);
-            }
+            app(BookingNotifications::class)->confirmation(
+                $appointment, $client, $shop, $barber, $services, $start,
+            );
 
             return $appointment;
         }, 3);
@@ -418,6 +395,7 @@ class ScheduleController extends Controller
             if ($appointment->status !== 'scheduled') {
                 throw ValidationException::withMessages(['status' => 'Somente agendamentos pendentes podem ser modificados.']);
             }
+            $previousStart = $appointment->start_time->setTimezone($shop->timezone)->toIso8601String();
             if ($data['status'] === 'scheduled') {
                 $barber = $this->barber($request, $shop, $appointment->user_id);
                 [$start, $end] = $this->interval($request, $shop);
@@ -449,8 +427,13 @@ class ScheduleController extends Controller
                 $appointment->end_time = $actualEnd->utc();
             }
             $appointment->status = $data['status'];
+            $changed = $appointment->isDirty(['start_time', 'end_time', 'status']);
             $appointment->save();
-            $notifications = Notification::where('appointment_id', $appointment->id)->where('status', 'pending')->get();
+            if ($changed) {
+                app(BookingNotifications::class)->changed($appointment, $shop, $previousStart);
+            }
+            $notifications = Notification::where('appointment_id', $appointment->id)
+                ->where('type', 'whatsapp')->where('status', 'pending')->get();
             foreach ($notifications as $notification) {
                 $payload = $notification->payload;
                 $payload['starts_at'] = $appointment->start_time->setTimezone($shop->timezone)->toIso8601String();

@@ -4,6 +4,7 @@ use App\Http\Controllers\BarberController;
 use App\Http\Controllers\BarbershopController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\ServiceController;
@@ -36,6 +37,10 @@ Route::get('api/barbershops/{barbershop:slug}/gallery', [BarbershopController::c
     ->name('barbershops.gallery');
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::get('notifications/{notification}', [NotificationController::class, 'show'])->name('notifications.show');
+    Route::post('notifications/{notification}/retry', [NotificationController::class, 'retry'])
+        ->middleware('throttle:10,1')->name('notifications.retry');
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('dashboard/scheduled', [DashboardController::class, 'scheduled'])->name('dashboard.scheduled');
     Route::get('dashboard/export', [DashboardController::class, 'export'])->name('dashboard.export');

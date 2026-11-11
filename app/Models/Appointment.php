@@ -25,6 +25,7 @@ class Appointment extends Model
     protected $casts = [
         'start_time' => 'datetime',
         'end_time' => 'datetime',
+        'email_notifications_enabled' => 'boolean',
     ];
 
     public function barbershop()

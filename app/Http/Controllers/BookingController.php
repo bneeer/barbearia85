@@ -5,12 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\Appointment;
 use App\Models\Barbershop;
 use App\Models\Client;
-use App\Models\Notification;
 use App\Models\Scopes\BarbershopScope;
 use App\Models\Service;
 use App\Models\User;
 use App\Rules\InternationalPhone;
 use App\Services\BookingAvailability;
+use App\Services\BookingNotifications;
 use App\Support\PhoneNumber;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -237,24 +237,8 @@ class BookingController extends Controller
         Collection $services,
         CarbonImmutable $start,
     ): void {
-        foreach (['email', 'whatsapp'] as $channel) {
-            Notification::create([
-                'appointment_id' => $appointment->id, 'client_id' => $client->id,
-                'type' => $channel, 'template' => 'booking_confirmation', 'status' => 'pending',
-                'payload' => [
-                    'name' => $client->name,
-                    'recipient' => $channel === 'email' ? $client->email : $client->phone,
-                    'barbershop' => $shop->name, 'address' => $shop->address, 'phones' => $shop->phones,
-                    'service' => $services->pluck('name')->implode(' + '),
-                    'services' => $services->map(fn ($service) => [
-                        'name' => $service->name, 'duration' => $service->duration, 'price' => $service->price,
-                    ])->values()->all(),
-                    'duration' => (int) $services->sum('duration'),
-                    'price' => (float) $services->sum(fn ($service) => (float) $service->price),
-                    'barber' => $barber->name, 'starts_at' => $start->toIso8601String(),
-                    'timezone' => $shop->timezone,
-                ],
-            ]);
-        }
+        app(BookingNotifications::class)->confirmation(
+            $appointment, $client, $shop, $barber, $services, $start,
+        );
     }
 }

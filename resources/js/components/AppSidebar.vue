@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Group, Home, Scissor } from '@iconoir/vue';
 import { Link } from '@inertiajs/vue3';
-import { CalendarDays, Package } from 'lucide-vue-next';
+import { CalendarDays, Mail, Package } from 'lucide-vue-next';
 import AppLogo from '@/components/AppLogo.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
@@ -21,6 +21,12 @@ import type { NavItem } from '@/types';
 const { isAdmin } = useAuth();
 
 const mainNavItems: NavItem[] = [
+    {
+        title: 'Notificações',
+        href: '/notifications',
+        icon: Mail,
+        requiresAdmin: true,
+    },
     {
         title: 'Início',
         href: dashboard(),

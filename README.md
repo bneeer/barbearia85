@@ -9,7 +9,7 @@ Aplicação web para apresentar a Barbearia 85 e permitir que clientes agendem s
 - Consulta de horários considerando a duração individual do serviço, expediente, horários de trabalho dos barbeiros, bloqueios e agendamentos existentes, inclusive em outras unidades. Os serviços do mesmo pedido não podem se sobrepor para o cliente; horários consecutivos são permitidos.
 - Confirmação pública atômica: todos os atendimentos são revalidados e registrados juntos, com um único cadastro de cliente. Se qualquer item não estiver disponível, nenhum é criado. O resumo permite editar cada item sem perder os demais; cada reserva confirmada possui seu próprio evento para Google Calendar, Outlook ou Apple Calendar.
 - Agendamentos combinados anteriores e a criação administrativa de vários serviços no mesmo atendimento continuam usando um único barbeiro e a duração somada. As novas reservas públicas podem ser canceladas, reagendadas e finalizadas individualmente na agenda.
-- Cadastro do cliente e criação do agendamento com notificações registradas para processamento.
+- Cadastro do cliente e criação do agendamento com outbox de notificações por e-mail via SMTP, retentativas e acompanhamento de falhas.
 - Área administrativa para gerenciar unidades, horários e equipes, barbeiros, serviços e fotos das unidades.
 - Dashboard (`/dashboard`) com filtros globais por intervalo e unidade aplicados aos indicadores, gráfico e atendimentos concluídos. O padrão é do primeiro dia do mês atual até hoje; há atalhos para hoje, semana (segunda a domingo) e mês, além de intervalo personalizado de até 365 dias. Os indicadores comparam o intervalo selecionado ao intervalo imediatamente anterior de igual duração. O calendário do dashboard usa `app.display_timezone` (por padrão `America/Sao_Paulo`), mantendo armazenamento e serialização dos instantes em UTC.
 - O resumo distingue concluídos, agendados, cancelados e faltas; cancelamentos e faltas não entram na ocupação. A ocupação soma minutos concluídos e agendados sobre minutos de expediente disponíveis, descontando bloqueios, e mostra a capacidade livre em minutos. Como os horários cadastrados são globais por barbeiro, a ocupação é consolidada por barbeiro entre unidades e não é apresentada quando uma unidade específica está selecionada.
@@ -73,7 +73,49 @@ Para iniciar a aplicação em ambiente de desenvolvimento:
 composer run dev
 ```
 
-O comando inicia o servidor Laravel, o listener da fila e o servidor de desenvolvimento do Vite. A aplicação fica disponível, por padrão, em `http://localhost:8000`.
+O comando inicia o servidor Laravel, o listener das filas `notifications,default`, o scheduler e o servidor de desenvolvimento do Vite. A aplicação fica disponível, por padrão, em `http://localhost:8000`.
+
+## Notificações por e-mail (SMTP)
+
+O canal começa **desativado**. Nunca habilite o envio com dados de demonstração ou contatos que não possam receber mensagens reais. WhatsApp continua somente registrado, sem integração de envio.
+
+1. Faça backup e aplique `php artisan migrate`. A migração amplia a outbox e preserva o histórico; não admite rollback destrutivo. No MySQL, uma falha pode deixar alterações de estrutura aplicadas sem registrar a migration como concluída. A migration permite retomar esse estado com o mesmo comando, verificando colunas, tabelas, índices e chaves estrangeiras existentes; não apague colunas nem use `migrate:fresh` para tentar novamente. Agendamentos existentes ou criados com o canal desativado ficam fora do envio por padrão, inclusive de alterações posteriores. Confirmações antigas pendentes são marcadas como ignoradas. A inclusão retroativa de reservas futuras exige o comando explícito descrito abaixo.
+2. Configure `MAIL_MAILER=smtp`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` e `APP_URL` com a URL HTTPS pública correta. Use `MAIL_SCHEME=smtp` para STARTTLS (normalmente porta 587) ou `smtps` para TLS implícito (normalmente 465), conforme seu servidor. O transporte mantém a verificação de certificados; não desative TLS/verificação para contornar erros. `MAIL_TIMEOUT=20` limita operações de socket; mantenha-o abaixo do timeout do worker. Não coloque credenciais no repositório.
+3. Execute um worker supervisionado: `php artisan queue:work database --queue=notifications,default --tries=1 --timeout=30`. `NOTIFICATIONS_QUEUE_CONNECTION` é `database` por padrão, independentemente da fila padrão da aplicação. Se usar outra conexão, altere também o worker e mantenha seu `retry_after` maior que o lease de 120 segundos; no database padrão, configure `DB_QUEUE_RETRY_AFTER=180`. O claim da outbox impede consumo concorrente.
+4. Configure o scheduler para executar `php artisan schedule:run` a cada minuto. Localmente, `composer run dev` já inicia `schedule:work`. O comando `php artisan notifications:dispatch` também permite disparar uma varredura manual de mensagens pendentes e identificar envios interrompidos.
+5. Somente depois de SMTP, fila e scheduler estarem prontos, defina `NOTIFICATIONS_EMAIL_ENABLED=true`, recarregue o cache de configuração (`php artisan config:cache`) e reinicie os workers (`php artisan queue:restart`). Reservas criadas com o canal habilitado passam a gerar e-mails transacionais; as anteriores só entram por inclusão retroativa explícita.
+
+Para substituir uma instalação anterior, atualize as dependências com `composer install`, remova as variáveis antigas `RESEND_API_KEY` e `RESEND_WEBHOOK_SECRET` do ambiente e desative o webhook no painel antigo. A rota de webhook e o SDK foram removidos. As tabelas, IDs e eventos históricos existentes são preservados, sem nova migração destrutiva. Interrompa os workers antigos antes da troca para não misturar os transportes. Resultados incertos pendentes do transporte anterior não são reenviados automaticamente.
+
+Verificação de conta e recuperação de senha mantêm os links assinados e o password broker do Laravel/Fortify. Há também aviso de senha alterada pelos dois caminhos existentes. Links e conteúdo renderizado ficam criptografados na outbox; jobs carregam apenas IDs e a administração não recebe tokens, links nem corpo das mensagens. Links vencidos, contas verificadas ou com e-mail alterado não são reenviados. Registro público de contas continua com a configuração existente do Fortify, sem ser habilitado por esta integração.
+
+Cada confirmação, reagendamento ou cancelamento de uma nova reserva elegível registra mensagens independentes para o cliente, o barbeiro responsável e administradores vinculados à unidade pela associação de usuários. Endereços repetidos recebem uma única mensagem por evento. Não há cópia visível de outros destinatários; e-mails da equipe não incluem valores financeiros. Reagendamentos e cancelamentos preservam o histórico e substituem mensagens anteriores ainda pendentes; mensagens já aceitas pelo provedor não podem ser recolhidas. Não há envio de campanhas, lembretes, bloqueios ou fechamento de atendimento.
+
+São até **5 tentativas totais por ciclo**, com esperas mínimas de **1, 5, 15 e 60 minutos**, realizadas pelo scheduler (portanto sujeitas à sua frequência). Somente recusas temporárias explícitas SMTP (códigos 4xx) repetem. Recusas permanentes (5xx) encerram o ciclo. Timeouts, desconexões e workers interrompidos após possível envio ficam bloqueados para análise: o servidor pode ter aceitado a mensagem antes da perda da resposta. A ausência de confirmação não é tratada como falha segura para reenvio.
+
+Administradores acessam **Notificações** (`/notifications`) para consultar globalmente unidade, destinatário, evento, tentativas, próxima execução e falhas sanitizadas. “Aceito pelo servidor SMTP” não significa entrega na caixa de entrada. Não há webhooks, rastreamento de abertura ou confirmação automática de entrega/bounce/reclamação por SMTP. Eventos do mecanismo anterior aparecem apenas como histórico. O identificador da mensagem auxilia a análise nos logs do servidor de e-mail.
+
+O reprocessamento manual exige confirmação, é auditado com o ID do administrador e só libera falhas elegíveis ainda válidas. Mensagens aceitas/entregues, expiradas, ignoradas e resultados ambíguos não podem ser reenviados pela tela. Corrija a causa antes de reprocessar; analise resultados incertos nos logs do servidor SMTP. Cada reprocessamento autorizado inicia outro ciclo de até 5 tentativas com o conteúdo e Message-ID estáveis. A chave da outbox evita duplicidade de registro/consumo local, mas **SMTP não oferece idempotência**: repetir o mesmo Message-ID não garante deduplicação no servidor. Por isso resultados incertos não são repetidos, mesmo manualmente.
+
+Com `MAIL_MAILER=log` ou `array`, mensagens processadas são marcadas como **simulação**, nunca como entrega real, e seu conteúdo sensível não é escrito no log. As falhas operacionais são registradas somente com ID e código sanitizado. Sem `NOTIFICATIONS_EMAIL_ENABLED`, não há ativação retroativa de reservas.
+
+### Confirmações retroativas
+
+Para incluir reservas anteriores à ativação ou criadas enquanto o canal estava desativado, primeiro confira os IDs e a quantidade, sem alterar dados:
+
+```bash
+php artisan notifications:backfill
+```
+
+Após conferir os destinatários no cadastro e configurar SMTP, worker, scheduler e `NOTIFICATIONS_EMAIL_ENABLED=true`, execute explicitamente:
+
+```bash
+php artisan notifications:backfill --write
+```
+
+O comando enfileira somente **confirmações de agendamentos futuros com status `scheduled`, não excluídos e ainda não habilitados para e-mail**, em todas as unidades. Usa horário, serviços e contatos atuais, e os mesmos destinatários do fluxo normal: cliente, barbeiro responsável e administradores vinculados à unidade, sem repetir endereços. Não recupera eventos passados, links de conta, cancelamentos ou reagendamentos históricos, nem recria notificações WhatsApp. Registros antigos são preservados; pendências legadas substituídas são marcadas como ignoradas.
+
+Cada reserva incluída passa também a receber futuras alterações e cancelamentos. A operação é transacional por agendamento e pode ser repetida ou retomada sem recriar suas confirmações. Reservas com notificações modernas ou histórico de tentativa, aceite, falha ou resultado incerto são excluídas do lote: o comando não contorna as regras de reenvio/reconciliação. Os envios usam a mesma outbox, validade, monitoramento e política de retentativas do fluxo normal. Com workers ativos, `--write` pode iniciar envios imediatamente após cada agendamento ser registrado; a simulação não enfileira nem habilita reservas.
 
 ## Dados de demonstracao
 
@@ -102,7 +144,7 @@ php artisan test
 ```
 
 Os testes de formatação e normalização do frontend usam Node.js 22.6 ou superior: `npm run test:phone`.
-As regras de seleção e sobreposição dos serviços públicos são cobertas por `npm run test:booking`. Notificações de confirmação continuam pendentes por reserva, sem envio automático.
+As regras de seleção e sobreposição dos serviços públicos são cobertas por `npm run test:booking`. A outbox, o corte de ativação, as retentativas e os templates são cobertos por `EmailNotificationsTest`; o transporte SMTP e a classificação de erros são cobertos por `SmtpGatewayTest`, sem envio real a destinatários.
 
 As regras de comparação do dashboard são cobertas por `node --experimental-strip-types --test tests/frontend/dashboard-comparison.test.mjs`.
 

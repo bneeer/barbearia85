@@ -142,12 +142,13 @@ class ScheduleTest extends TestCase
         $this->assertDatabaseHas('appointments', [
             'id' => $appointment->id, 'start_time' => '2026-11-09 13:10:00', 'end_time' => '2026-11-09 13:50:00',
         ]);
-        $this->assertSame('2026-11-09T10:10:00-03:00', Notification::first()->payload['starts_at']);
+        $this->assertSame('2026-11-09T09:00:00-03:00', Notification::first()->payload['starts_at']);
         $this->update($appointment)->assertConflict();
         $appointment->refresh();
         $this->update($appointment, ['status' => 'cancelled'])->assertOk();
         $this->assertSame('cancelled', $appointment->fresh()->status);
-        $this->assertSame('booking_cancellation', Notification::first()->template);
+        $this->assertSame('booking_confirmation', Notification::first()->template);
+        $this->assertDatabaseCount('notifications', 1);
         $this->events()->assertOk()->assertJsonCount(0);
         $this->postJson('/schedule/blocks', $this->block(['start' => '2026-11-09T10:10', 'end' => '2026-11-09T11:00']))->assertCreated();
     }
