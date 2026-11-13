@@ -7,6 +7,7 @@ use App\Models\Barbershop;
 use App\Models\Scopes\BarbershopScope;
 use App\Models\User;
 use App\Services\DashboardAppointments;
+use App\Services\DashboardStock;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -21,7 +22,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class DashboardController extends Controller
 {
-    public function index(Request $request, DashboardAppointments $dashboard)
+    public function index(Request $request, DashboardAppointments $dashboard, DashboardStock $stock)
     {
         if (! $request->user()->isBarber()) {
             return Inertia::render('Dashboard');
@@ -35,7 +36,7 @@ class DashboardController extends Controller
         $end = CarbonImmutable::createFromFormat('!Y-m-d', $filters['range_to'], $timezone);
         $barbershopId = isset($filters['barbershop_id']) ? (int) $filters['barbershop_id'] : null;
 
-        return Inertia::render('Dashboard', [
+        $props = [
             'filters' => $filters,
             'barbershops' => fn () => $this->availableBarbershops($request->user()),
             'shortcuts' => fn () => $this->rangeShortcuts(),
@@ -46,7 +47,17 @@ class DashboardController extends Controller
             'appointments' => $query->orderByDesc('start_time')->orderByDesc('id')
                 ->paginate($filters['per_page'] ?? 10)->withQueryString()
                 ->through(fn (Appointment $appointment) => $this->appointmentData($appointment, $request->user())),
-        ]);
+        ];
+        if ($request->user()->isAdmin()) {
+            $props['stockSummary'] = fn () => $stock->summary(
+                $start,
+                $end,
+                $barbershopId,
+                $request->user(),
+            );
+        }
+
+        return Inertia::render('Dashboard', $props);
     }
 
     public function export(Request $request, DashboardAppointments $dashboard)

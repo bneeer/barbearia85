@@ -16,17 +16,26 @@ class Product extends Model
         'brand',
         'description',
         'price',
+        'stock_quantity',
+        'min_stock',
     ];
 
     protected function casts(): array
     {
         return [
             'price' => 'decimal:2',
+            'stock_quantity' => 'integer',
+            'min_stock' => 'integer',
         ];
     }
 
     public function barbershop()
     {
         return $this->belongsTo(Barbershop::class);
+    }
+
+    public function stockMovements()
+    {
+        return $this->morphMany(StockMovement::class, 'stockable');
     }
 }

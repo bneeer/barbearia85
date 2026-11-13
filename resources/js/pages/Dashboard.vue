@@ -7,6 +7,7 @@ import DashboardIndicators from '@/components/DashboardIndicators.vue';
 import PaymentMethodsChart from '@/components/PaymentMethodsChart.vue';
 import ServiceHighlights from '@/components/ServiceHighlights.vue';
 import ServicesTimelineChart from '@/components/ServicesTimelineChart.vue';
+import StockDashboard from '@/components/StockDashboard.vue';
 import Switch from '@/components/ui/switch/Switch.vue';
 import { useAuth } from '@/composables/useAuth';
 import { dashboard } from '@/routes';
@@ -15,6 +16,7 @@ import type {
     AppointmentPage,
     DashboardIndicators as Indicators,
     DashboardSummary,
+    DashboardStockSummary,
     ServicesTimeline,
 } from '@/types/dashboard';
 
@@ -25,6 +27,7 @@ const props = defineProps<{
     filters?: AppointmentFilters;
     indicators?: Indicators;
     summary?: DashboardSummary;
+    stockSummary?: DashboardStockSummary;
     servicesTimeline?: ServicesTimeline;
     rangeTimeline?: ServicesTimeline;
     barbershops?: { id: number; name: string }[];
@@ -250,6 +253,12 @@ defineOptions({
             :summary="summary"
             :barbershop-id="appliedBarbershopId"
             :show-financials="isAdmin && showFinancials"
+        />
+        <StockDashboard
+            v-if="isAdmin && stockSummary && summary"
+            :summary="stockSummary"
+            :range-from="summary.from"
+            :range-to="summary.to"
         />
         <div
             v-if="isAdmin && summary"

@@ -118,9 +118,10 @@ class BookingNotifications
         ];
     }
 
-    public function changed(Appointment $appointment, Barbershop $shop, string $previousStart): void
+    public function changed(Appointment $appointment, Barbershop $shop, string $previousStart, bool $cancelledByClient = false): void
     {
-        if (! $appointment->email_notifications_enabled || ! config('notifications.email_enabled')) {
+        $cancelledByClient = $cancelledByClient && $appointment->status === 'cancelled';
+        if ((! $appointment->email_notifications_enabled && ! $cancelledByClient) || ! config('notifications.email_enabled')) {
             return;
         }
         $client = $appointment->client()->withoutGlobalScopes()->firstOrFail();
@@ -136,6 +137,7 @@ class BookingNotifications
             'barber' => $barber->name, 'duration' => (int) $services->sum('duration'),
             'starts_at' => $appointment->start_time->setTimezone($shop->timezone)->toIso8601String(),
             'previous_starts_at' => $previousStart, 'timezone' => $shop->timezone,
+            'cancelled_by_client' => $cancelledByClient,
         ];
         Notification::where('appointment_id', $appointment->id)->where('type', 'email')
             ->where('status', 'pending')->update(['status' => 'skipped', 'failure_code' => 'superseded']);

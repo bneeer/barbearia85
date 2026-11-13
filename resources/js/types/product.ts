@@ -4,4 +4,6 @@ export type Product = {
     brand: string;
     description: string;
     price: string;
+    stock_quantity: number;
+    min_stock: number;
 };

@@ -12,7 +12,8 @@
         "lint:check": "eslint .",
         "types:check": "vue-tsc --noEmit",
         "test:phone": "node --experimental-strip-types --test tests/frontend/phone.test.mjs",
-        "test:booking": "node --experimental-strip-types --test tests/frontend/booking.test.mjs tests/frontend/booking-stepper.test.mjs"
+        "test:booking": "node --experimental-strip-types --test tests/frontend/booking.test.mjs tests/frontend/booking-stepper.test.mjs",
+        "test:privacy": "node --experimental-strip-types --test tests/frontend/privacy-footer.test.mjs tests/frontend/privacy-requests.test.mjs"
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",

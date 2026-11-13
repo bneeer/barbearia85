@@ -144,7 +144,7 @@ class BookingCancellations
             foreach ($appointments as $appointment) {
                 $previousStart = $appointment->start_time->setTimezone($appointment->barbershop->timezone)->toIso8601String();
                 $appointment->update(['status' => 'cancelled']);
-                app(BookingNotifications::class)->changed($appointment, $appointment->barbershop, $previousStart);
+                app(BookingNotifications::class)->changed($appointment, $appointment->barbershop, $previousStart, cancelledByClient: true);
                 app(BookingNotifications::class)->synchronizePendingWhatsApp($appointment, $appointment->barbershop);
             }
             $grant->update(['cancelled_ids' => array_values(array_unique([

@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { Group, Home, Scissor, Shop } from '@iconoir/vue';
 import { Link } from '@inertiajs/vue3';
-import { CalendarDays, Mail, Package } from 'lucide-vue-next';
+import {
+    CalendarDays,
+    ClipboardList,
+    Boxes,
+    Mail,
+    Package,
+    Users,
+} from 'lucide-vue-next';
 import AppLogo from '@/components/AppLogo.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
@@ -38,6 +45,12 @@ const mainNavItems: NavItem[] = [
         requiresAdmin: true,
     },
     {
+        title: 'Clientes',
+        href: '/clients',
+        icon: Users,
+        requiresAdmin: true,
+    },
+    {
         title: 'Barbearias',
         href: '/barbershops',
         icon: Shop,
@@ -56,20 +69,39 @@ const mainNavItems: NavItem[] = [
         requiresAdmin: true,
     },
     {
+        title: 'Estoque',
+        href: '/inventory',
+        icon: Boxes,
+        requiresAdmin: true,
+    },
+];
+
+const bottomNavItems: NavItem[] = [
+    {
         title: 'Notificações',
         href: '/notifications',
         icon: Mail,
         requiresAdmin: true,
     },
+    {
+        title: 'Solicitações LGPD',
+        href: '/privacy-requests',
+        icon: ClipboardList,
+        requiresAdmin: true,
+    },
 ];
 
-const filteredNavItems = mainNavItems.filter((item) => {
-    if (item.requiresAdmin) {
-        return isAdmin.value;
-    }
+const filterNavItems = (items: NavItem[]) =>
+    items.filter((item) => {
+        if (item.requiresAdmin) {
+            return isAdmin.value;
+        }
 
-    return true;
-});
+        return true;
+    });
+
+const filteredNavItems = filterNavItems(mainNavItems);
+const filteredBottomNavItems = filterNavItems(bottomNavItems);
 </script>
 
 <template>
@@ -87,10 +119,14 @@ const filteredNavItems = mainNavItems.filter((item) => {
         </SidebarHeader>
 
         <SidebarContent>
-            <NavMain :items="filteredNavItems" />
+            <NavMain label="Minha barbearia" :items="filteredNavItems" />
         </SidebarContent>
 
         <SidebarFooter>
+            <NavMain
+                v-if="filteredBottomNavItems.length"
+                :items="filteredBottomNavItems"
+            />
             <NavUser />
         </SidebarFooter>
     </Sidebar>

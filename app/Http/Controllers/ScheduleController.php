@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Rules\InternationalPhone;
 use App\Services\BookingAvailability;
 use App\Services\BookingNotifications;
+use App\Services\StockLedger;
 use App\Support\PhoneNumber;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -86,7 +87,9 @@ class ScheduleController extends Controller
                         'id', 'name', 'duration', 'price',
                     ])),
                     'products' => $request->user()->isAdmin()
-                        ? $shop->products->map(fn ($product) => $product->only(['id', 'name', 'brand', 'price']))
+                        ? $shop->products->map(fn ($product) => $product->only([
+                            'id', 'name', 'brand', 'price', 'stock_quantity',
+                        ]))
                         : [],
                 ]),
         ]);
@@ -267,7 +270,7 @@ class ScheduleController extends Controller
         return (int) $whole * 100 + (int) str_pad($fraction, 2, '0');
     }
 
-    public function checkout(Request $request, int $id)
+    public function checkout(Request $request, int $id, StockLedger $ledger)
     {
         $shop = $this->shop($request);
         abort_unless($request->user()->isAdmin(), 403);
@@ -288,7 +291,7 @@ class ScheduleController extends Controller
         $appointment = Appointment::withoutGlobalScope(BarbershopScope::class)
             ->where('barbershop_id', $shop->id)->findOrFail($id);
 
-        DB::transaction(function () use ($request, $shop, $data, $appointment) {
+        DB::transaction(function () use ($request, $shop, $data, $appointment, $ledger) {
             User::whereKey($appointment->user_id)->lockForUpdate()->firstOrFail();
             $appointment->refresh();
             abort_unless(hash_equals($this->appointmentVersion($appointment), $data['version']), 409, 'O agendamento foi alterado. Atualize o calendário.');
@@ -316,11 +319,16 @@ class ScheduleController extends Controller
             }
             $products = Product::withoutGlobalScope(BarbershopScope::class)
                 ->where('barbershop_id', $shop->id)->whereIn('id', collect($data['products'])->pluck('id'))
-                ->lockForUpdate()->get()->keyBy('id');
+                ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $productItems = collect($data['products'])->map(function ($item) use ($products) {
                 $product = $products->get($item['id']);
                 if (! $product || $this->cents($product->price) !== (int) $item['price_cents']) {
                     throw ValidationException::withMessages(['products' => 'Um produto não está disponível ou teve seu preço alterado. Recarregue a página e confira os valores.']);
+                }
+                if ($product->stock_quantity < (int) $item['quantity']) {
+                    throw ValidationException::withMessages([
+                        'products' => "Estoque insuficiente para {$product->name}. Atualize a quantidade ou o estoque.",
+                    ]);
                 }
 
                 return [
@@ -333,7 +341,7 @@ class ScheduleController extends Controller
             if ($data['discount_cents'] > $subtotal) {
                 throw ValidationException::withMessages(['discount_cents' => 'O desconto não pode superar o subtotal.']);
             }
-            $appointment->checkout()->create([
+            $checkout = $appointment->checkout()->create([
                 'created_by' => $request->user()->id,
                 'services' => $serviceItems->all(), 'products' => $productItems->all(),
                 'services_total_cents' => $servicesTotal, 'products_total_cents' => $productsTotal,
@@ -341,6 +349,16 @@ class ScheduleController extends Controller
                 'payment_method' => $data['payment_method'],
                 'notes' => $data['notes'] ?? null,
             ]);
+            foreach ($productItems as $item) {
+                $ledger->record(
+                    $products->get($item['id']),
+                    -($item['quantity'] * 1000),
+                    'exit',
+                    "Venda no atendimento #{$appointment->id}",
+                    $request->user(),
+                    $checkout->id,
+                );
+            }
             $appointment->update(['status' => 'completed']);
         }, 3);
 

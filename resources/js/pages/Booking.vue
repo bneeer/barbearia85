@@ -3,6 +3,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import BookingGallery from '@/components/BookingGallery.vue';
 import PhoneInput from '@/components/PhoneInput.vue';
+import PublicFooter from '@/components/PublicFooter.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1459,5 +1460,6 @@ function back() {
                 </form>
             </template>
         </main>
+        <PublicFooter />
     </div>
 </template>

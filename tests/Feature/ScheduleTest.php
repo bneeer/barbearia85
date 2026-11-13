@@ -531,10 +531,12 @@ class ScheduleTest extends TestCase
         $appointment->services()->sync([$this->service->id, $secondService->id]);
         $product = Product::create([
             'barbershop_id' => $this->shop->id, 'name' => 'Pomada', 'brand' => 'Marca',
-            'description' => 'Produto', 'price' => '10.05',
+            'description' => 'Produto', 'price' => '10.05', 'stock_quantity' => 2,
         ]);
         $this->actingAs($this->admin)->get('/schedule')->assertOk()->assertInertia(fn (Assert $page) => $page
-            ->where('barbershops.0.products.0.id', $product->id)->has('barbershops.1.products', 0));
+            ->where('barbershops.0.products.0.id', $product->id)
+            ->where('barbershops.0.products.0.stock_quantity', 2)
+            ->has('barbershops.1.products', 0));
         $payload = [
             'barbershop_id' => $this->shop->id, 'version' => $this->version($appointment),
             'services_total_cents' => 6235,
@@ -552,6 +554,17 @@ class ScheduleTest extends TestCase
             'services_total_cents' => 6235, 'products_total_cents' => 2010,
             'discount_cents' => 105, 'total_cents' => 8140, 'payment_method' => 'credit_card',
             'notes' => $payload['notes'],
+        ]);
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'stock_quantity' => 0]);
+        $checkoutId = DB::table('appointment_checkouts')
+            ->where('appointment_id', $appointment->id)->value('id');
+        $this->assertDatabaseHas('stock_movements', [
+            'stockable_type' => Product::class,
+            'stockable_id' => $product->id,
+            'appointment_checkout_id' => $checkoutId,
+            'type' => 'exit',
+            'quantity' => '-2.000',
+            'balance_after' => '0.000',
         ]);
         $this->assertDatabaseCount('payments', 0);
         $this->assertSame('completed', $appointment->fresh()->status);
@@ -579,11 +592,11 @@ class ScheduleTest extends TestCase
         $appointment = $this->appointment();
         $product = Product::create([
             'barbershop_id' => $this->shop->id, 'name' => 'Pomada', 'brand' => 'Marca',
-            'description' => 'Produto', 'price' => '10.00',
+            'description' => 'Produto', 'price' => '10.00', 'stock_quantity' => 1,
         ]);
         $otherProduct = Product::create([
             'barbershop_id' => $this->other->id, 'name' => 'Outro', 'brand' => 'Marca',
-            'description' => 'Produto', 'price' => '10.00',
+            'description' => 'Produto', 'price' => '10.00', 'stock_quantity' => 1,
         ]);
         $payload = [
             'barbershop_id' => $this->shop->id, 'version' => $this->version($appointment),
@@ -611,6 +624,10 @@ class ScheduleTest extends TestCase
         }
         $this->postJson($url, [...$payload, 'version' => str_repeat('0', 64)])->assertConflict();
         $this->postJson($url, [...$payload, 'barbershop_id' => $this->other->id])->assertNotFound();
+        $this->postJson($url, [
+            ...$payload,
+            'products' => [['id' => $product->id, 'quantity' => 2, 'price_cents' => 1000]],
+        ])->assertUnprocessable()->assertJsonValidationErrors('products');
         $this->assertDatabaseCount('appointment_checkouts', 0);
         $this->assertSame('scheduled', $appointment->fresh()->status);
         $this->postJson($url, [...$payload, 'products' => [], 'discount_cents' => 5000, 'payment_method' => 'cash'])->assertOk();

@@ -26,6 +26,7 @@ class ProductController extends Controller
             'brand' => ['required', 'string', 'max:255'],
             'description' => ['required', 'string'],
             'price' => ['required', 'numeric', 'min:0', 'max:99999999.99', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'min_stock' => ['sometimes', 'required', 'integer', 'min:0', 'max:999999999'],
         ], [
             'price.regex' => 'O preço deve ter no máximo duas casas decimais.',
         ]);

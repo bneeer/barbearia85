@@ -77,7 +77,9 @@ class NotificationEmail extends Mailable
                 ? 'Seu horário está reservado. Esperamos você para cuidar do seu estilo!'
                 : 'Um novo atendimento foi confirmado na agenda da unidade.',
             'booking_rescheduled' => 'O horário do atendimento foi atualizado. Confira os novos detalhes abaixo.',
-            'booking_cancellation' => 'O atendimento foi cancelado. Este horário não está mais reservado.',
+            'booking_cancellation' => ($payload['cancelled_by_client'] ?? false)
+                ? 'O cliente confirmou o cancelamento pelo link enviado por e-mail. Este horário não está mais reservado.'
+                : 'O atendimento foi cancelado. Este horário não está mais reservado.',
         };
         $date = fn ($value) => $value
             ? CarbonImmutable::parse($value)->setTimezone($payload['timezone'])->format('d/m/Y \à\s H:i')

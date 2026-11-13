@@ -13,6 +13,7 @@ const form = useForm({
     brand: props.product?.brand ?? '',
     description: props.product?.description ?? '',
     price: props.product?.price ?? '',
+    min_stock: props.product?.min_stock ?? 0,
 });
 
 function submit() {
@@ -58,6 +59,22 @@ function submit() {
                 required
             />
             <InputError :message="form.errors.price" />
+        </div>
+        <div class="grid gap-2">
+            <Label for="min_stock">Estoque mínimo para alerta</Label>
+            <Input
+                id="min_stock"
+                v-model.number="form.min_stock"
+                type="number"
+                min="0"
+                max="999999999"
+                step="1"
+                required
+            />
+            <InputError :message="form.errors.min_stock" />
+            <p class="text-sm text-muted-foreground">
+                O saldo inicial é zero. Registre uma entrada na tela de Estoque.
+            </p>
         </div>
         <div class="flex gap-2">
             <Button type="submit" :disabled="form.processing"

@@ -162,6 +162,23 @@ export type DashboardSummary = {
     }[];
 };
 
+export type DashboardStockSummary = {
+    current: {
+        products_to_restock: number;
+        supplies_to_restock: number;
+        products_out_of_stock: number;
+        supplies_out_of_stock: number;
+    };
+    period: {
+        units_sold: number;
+        sales_count: number;
+        entries_count: number;
+        manual_exits_count: number;
+        adjustments_count: number;
+        top_sellers: { id: number; name: string; quantity: number }[];
+    };
+};
+
 export type ScheduledAppointmentPage = Omit<AppointmentPage, 'data'> & {
     data: {
         id: number;

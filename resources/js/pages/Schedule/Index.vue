@@ -32,7 +32,13 @@ import { Label } from '@/components/ui/label';
 import { DISPLAY_TIMEZONE } from '@/lib/dateTime';
 
 type Service = { id: number; name: string; duration: number; price: string };
-type Product = { id: number; name: string; brand: string; price: string };
+type Product = {
+    id: number;
+    name: string;
+    brand: string;
+    price: string;
+    stock_quantity: number;
+};
 type Checkout = {
     services: {
         id: number;
@@ -601,11 +607,26 @@ async function openCheckout() {
 function addCheckoutProduct() {
     const id = Number(productToAdd.value);
 
-    if (id && !checkoutProducts.value.some((item) => item.id === id)) {
+    const product = shop.value?.products.find((item) => item.id === id);
+
+    if (
+        product &&
+        product.stock_quantity > 0 &&
+        !checkoutProducts.value.some((item) => item.id === id)
+    ) {
         checkoutProducts.value.push({ id, quantity: 1 });
     }
 
     productToAdd.value = '';
+}
+function limitCheckoutQuantity(item: { id: number; quantity: number }) {
+    const stock = shop.value?.products.find(
+        (product) => product.id === item.id,
+    )?.stock_quantity;
+
+    if (stock !== undefined) {
+        item.quantity = Math.max(1, Math.min(item.quantity || 1, stock, 999));
+    }
 }
 async function submitCheckout() {
     if (!selected.value || !shop.value || busy.value || !validDiscount.value) {
@@ -1781,6 +1802,7 @@ const options = computed<CalendarOptions>(() => ({
                                 <option
                                     v-for="product in shop?.products.filter(
                                         (product) =>
+                                            product.stock_quantity > 0 &&
                                             !checkoutProducts.some(
                                                 (item) =>
                                                     item.id === product.id,
@@ -1805,10 +1827,14 @@ const options = computed<CalendarOptions>(() => ({
                             >
                         </div>
                         <p
-                            v-if="!shop?.products.length"
+                            v-if="
+                                !shop?.products.some(
+                                    (product) => product.stock_quantity > 0,
+                                )
+                            "
                             class="text-sm text-muted-foreground"
                         >
-                            Nenhum produto cadastrado nesta unidade.
+                            Nenhum produto disponível em estoque nesta unidade.
                         </p>
                         <div
                             v-for="item in checkoutProducts"
@@ -1831,6 +1857,12 @@ const options = computed<CalendarOptions>(() => ({
                                             )?.price,
                                         ),
                                     )
+                                }}
+                                · Em estoque:
+                                {{
+                                    shop?.products.find(
+                                        (product) => product.id === item.id,
+                                    )?.stock_quantity
                                 }}</span
                             >
                             <Label :for="`quantity-${item.id}`">Qtd.</Label>
@@ -1840,9 +1872,17 @@ const options = computed<CalendarOptions>(() => ({
                                 class="w-20"
                                 type="number"
                                 min="1"
-                                max="999"
+                                :max="
+                                    Math.min(
+                                        shop?.products.find(
+                                            (product) => product.id === item.id,
+                                        )?.stock_quantity ?? 1,
+                                        999,
+                                    )
+                                "
                                 step="1"
                                 required
+                                @change="limitCheckoutQuantity(item)"
                             />
                             <Button
                                 type="button"

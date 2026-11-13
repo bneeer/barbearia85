@@ -239,7 +239,69 @@ class BookingCancellationTest extends TestCase
         $this->assertSame('cancelled', $second->fresh()->status);
         $this->assertScheduled($later);
         $this->assertFalse($first->fresh()->email_notifications_enabled);
+        $this->assertSame(4, Notification::where('template', 'booking_cancellation')->count());
+        foreach ([$first, $second] as $appointment) {
+            $this->assertDatabaseHas('notifications', [
+                'appointment_id' => $appointment->id, 'recipient' => $appointment->barber->email,
+                'audience' => 'barber', 'template' => 'booking_cancellation',
+            ]);
+        }
+    }
+
+    public function test_client_cancellation_notifies_only_responsible_staff_even_for_legacy_bookings(): void
+    {
+        $appointment = $this->appointment();
+        $shop = $appointment->barbershop;
+        $admin = User::factory()->create(['role' => 'admin']);
+        $secondAdmin = User::factory()->create(['role' => 'admin']);
+        $unlinkedAdmin = User::factory()->create(['role' => 'admin']);
+        $colleague = User::factory()->create(['role' => 'barber']);
+        $shop->users()->attach([$admin->id, $secondAdmin->id, $colleague->id]);
+        $notification = $this->requestEmail();
+        $url = $this->link($notification, $appointment->id);
+        $this->post($url)->assertSessionHasNoErrors();
+        $messages = Notification::where('template', 'booking_cancellation')->get();
+        $this->assertEqualsCanonicalizing(
+            [$appointment->client->email, $appointment->barber->email, $admin->email, $secondAdmin->email],
+            $messages->pluck('recipient')->all(),
+        );
+        $this->assertNotContains($unlinkedAdmin->email, $messages->pluck('recipient'));
+        $this->assertNotContains($colleague->email, $messages->pluck('recipient'));
+        foreach ($messages as $message) {
+            $this->assertSame($shop->id, $message->barbershop_id);
+            $this->assertTrue($message->payload['cancelled_by_client']);
+            $this->assertArrayNotHasKey('price', $message->payload);
+            $this->assertNull(app(EmailDelivery::class)->ineligible($message));
+            $mail = new NotificationEmail($message);
+            $this->assertStringContainsString('O cliente confirmou o cancelamento', $mail->render());
+            $this->assertStringContainsString('O cliente confirmou o cancelamento', view($mail->textView(), $mail->data())->render());
+            app(EmailDelivery::class)->send($message->id);
+            $this->assertSame('simulated', $message->fresh()->status);
+        }
+        $this->assertFalse($appointment->fresh()->email_notifications_enabled);
+        $this->post($url)->assertSessionHasErrors('cancellation');
+        $this->assertSame(4, Notification::where('template', 'booking_cancellation')->count());
+    }
+
+    public function test_client_cancellation_still_respects_the_global_email_switch(): void
+    {
+        $appointment = $this->appointment();
+        $notification = $this->requestEmail();
+        config(['notifications.email_enabled' => false]);
+        $this->post($this->link($notification, $appointment->id))->assertSessionHasNoErrors();
+        $this->assertSame('cancelled', $appointment->fresh()->status);
         $this->assertDatabaseMissing('notifications', ['template' => 'booking_cancellation']);
+    }
+
+    public function test_client_cancellation_deduplicates_staff_addresses(): void
+    {
+        $appointment = $this->appointment();
+        $appointment->barber->update(['email' => 'CLIENTE@example.com']);
+        $notification = $this->requestEmail();
+        $this->post($this->link($notification, $appointment->id))->assertSessionHasNoErrors();
+        $messages = Notification::where('template', 'booking_cancellation')->get();
+        $this->assertCount(1, $messages);
+        $this->assertSame('cliente@example.com', $messages->first()->recipient);
     }
 
     public function test_bulk_is_atomic_if_any_reservation_was_cancelled_or_rescheduled(): void

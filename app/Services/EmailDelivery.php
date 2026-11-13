@@ -98,7 +98,10 @@ class EmailDelivery
         }
         if ($record->appointment_id) {
             $appointment = Appointment::withoutGlobalScopes()->find($record->appointment_id);
-            if (! $appointment || ! $appointment->email_notifications_enabled) {
+            $clientCancellation = $record->template === 'booking_cancellation'
+                && ($record->payload['cancelled_by_client'] ?? false) === true
+                && $appointment?->status === 'cancelled';
+            if (! $appointment || (! $appointment->email_notifications_enabled && ! $clientCancellation)) {
                 return 'activation_cutoff';
             }
             if ($record->template !== 'booking_cancellation'
