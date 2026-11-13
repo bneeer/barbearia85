@@ -167,7 +167,7 @@ class ScheduleTest extends TestCase
             'barbershop_id' => $shop->id,
             'opened_by' => $this->admin->id,
             'opening_amount_cents' => 10000,
-            'opened_at' => now(),
+            'opened_at' => now(new \DateTimeZone('America/Sao_Paulo')),
         ]);
     }
 

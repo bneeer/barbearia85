@@ -113,7 +113,7 @@ class CashRegisterController extends Controller
             $shop->cashRegisters()->create([
                 'opened_by' => $request->user()->id,
                 'opening_amount_cents' => $this->cents($data['opening_amount']),
-                'opened_at' => now(),
+                'opened_at' => now(new \DateTimeZone('America/Sao_Paulo')),
             ]);
         }, 3);
 
@@ -186,7 +186,7 @@ class CashRegisterController extends Controller
 
             $register->update([
                 'closed_by' => $request->user()->id,
-                'closed_at' => now(),
+                'closed_at' => now(new \DateTimeZone('America/Sao_Paulo')),
                 'expected_cash_cents' => $expected['cash'],
                 'expected_pix_cents' => $expected['pix'],
                 'expected_credit_card_cents' => $expected['credit_card'],

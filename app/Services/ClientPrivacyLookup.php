@@ -58,7 +58,7 @@ class ClientPrivacyLookup
         return [
             'appointments' => (clone $appointments)->count(),
             'future_scheduled' => (clone $appointments)->whereNull('deleted_at')
-                ->where('status', 'scheduled')->where('start_time', '>', now())->count(),
+                ->where('status', 'scheduled')->where('start_time', '>', now(new \DateTimeZone('America/Sao_Paulo')))->count(),
             'checkouts' => \DB::table('appointment_checkouts')->whereIn('appointment_id', $ids)->count(),
             'payments' => \DB::table('payments')->whereIn('appointment_id', $ids)->count(),
             'linked_notifications' => Notification::where('client_id', $client->id)

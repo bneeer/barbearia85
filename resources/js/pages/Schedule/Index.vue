@@ -374,7 +374,7 @@ function isPastSelection(selection: CalendarSelection | null) {
     return selection.allDay
         ? selection.start.slice(0, 10) <
               localTime(new Date().toISOString()).slice(0, 10)
-        : selection.startsAt <= Date.now();
+        : selection.startsAt <= Date.now(new \DateTimeZone('America/Sao_Paulo'));
 }
 function openCreateAppointment(selection: CalendarSelection | null = null) {
     if (!shop.value || !shop.value.barbers.length || busy.value) {
@@ -881,7 +881,7 @@ const options = computed<CalendarOptions>(() => ({
             allDay: selection.allDay,
             durationMinutes: null,
         }),
-    eventAllow: (selection) => selection.start.getTime() > Date.now(),
+    eventAllow: (selection) => selection.start.getTime() > Date.now(new \DateTimeZone('America/Sao_Paulo')),
     selectMirror: true,
     longPressDelay: 400,
     eventTimeFormat: { hour: '2-digit', minute: '2-digit', hour12: false },

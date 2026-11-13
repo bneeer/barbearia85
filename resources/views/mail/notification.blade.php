@@ -23,6 +23,7 @@
 @if($audience === 'client' && isset($details['price']))<tr><td>Valor dos serviços</td><td>R$ {{ number_format($details['price'], 2, ',', '.') }}</td></tr>@endif
 </table>
 @if(!empty($details['phones']))<p style="color:#c1b9a7">Fale com a unidade: {{ implode(' · ', $details['phones']) }}</p>@endif
+@if($cancellationUrl)<p style="font-size:12px;color:#c1b9a7">Se precisar cancelar, <a href="{{ $cancellationUrl }}" style="color:#c1b9a7;text-decoration:underline">acesse este link</a>.</p>@endif
 @endunless
 @if($actionUrl)
 <p style="margin:32px 0"><a href="{{ $actionUrl }}" style="display:inline-block;background:#d3b04c;color:#16120a;padding:16px 24px;border-radius:8px;text-decoration:none;font-weight:bold">{{ $actionLabel }}</a></p>

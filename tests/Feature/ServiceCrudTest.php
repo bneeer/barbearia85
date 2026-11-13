@@ -28,8 +28,8 @@ class ServiceCrudTest extends TestCase
             'duration' => 30,
             'price' => '50.00',
             'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
+            'created_at' => now(new \DateTimeZone('America/Sao_Paulo')),
+            'updated_at' => now(new \DateTimeZone('America/Sao_Paulo')),
         ], $attributes));
     }
 

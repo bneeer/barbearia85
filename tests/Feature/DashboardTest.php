@@ -339,7 +339,7 @@ class DashboardTest extends TestCase
                 ->where('indicators.barbers.0.periods', $expected)
                 ->where('appointments.total', 0));
         foreach ($expected as $indicator) {
-            $query = http_build_query(['period' => $indicator['period'], 'period_at' => now()->toIso8601String()]);
+            $query = http_build_query(['period' => $indicator['period'], 'period_at' => now(new \DateTimeZone('America/Sao_Paulo'))->toIso8601String()]);
             $this->get('/dashboard?'.$query)->assertInertia(fn (Assert $page) => $page
                 ->where('appointments.total', $indicator['completed'])
                 ->where('filters.period', $indicator['period']));
@@ -347,7 +347,7 @@ class DashboardTest extends TestCase
                 ->assertJsonPath('total', $indicator['scheduled']);
         }
         $this->get('/dashboard?'.http_build_query([
-            'period' => 'day', 'period_at' => now()->toIso8601String(), 'unit' => 'Tokyo',
+            'period' => 'day', 'period_at' => now(new \DateTimeZone('America/Sao_Paulo'))->toIso8601String(), 'unit' => 'Tokyo',
         ]))->assertInertia(fn (Assert $page) => $page->where('appointments.total', 0));
     }
 
@@ -359,7 +359,7 @@ class DashboardTest extends TestCase
         for ($i = 0; $i < 12; $i++) {
             $last = $this->completedAppointment($shop, $admin, checkout: false);
         }
-        $query = ['period' => 'day', 'period_at' => now()->toIso8601String(), 'per_page' => 10];
+        $query = ['period' => 'day', 'period_at' => now(new \DateTimeZone('America/Sao_Paulo'))->toIso8601String(), 'per_page' => 10];
         $this->actingAs($admin)->get('/dashboard?'.http_build_query($query))->assertInertia(fn (Assert $page) => $page
             ->where('indicators.periods.0.completed', 12)->where('appointments.total', 12)
             ->where('appointments.next_page_url', fn ($url) => str_contains($url, 'period=day')
@@ -420,7 +420,7 @@ class DashboardTest extends TestCase
                     ['period' => 'month', 'completed' => 0, 'scheduled' => 0, 'total' => 0],
                 ])));
         $this->getJson('/dashboard/scheduled?'.http_build_query([
-            'period' => 'day', 'period_at' => now()->toIso8601String(),
+            'period' => 'day', 'period_at' => now(new \DateTimeZone('America/Sao_Paulo'))->toIso8601String(),
         ]))->assertOk()->assertJsonPath('total', 0)->assertJsonCount(0, 'data');
     }
 
@@ -497,7 +497,7 @@ class DashboardTest extends TestCase
         $this->actingAs($admin);
         foreach (['day' => 12, 'week' => 13, 'month' => 14] as $period => $count) {
             $query = [
-                'period' => $period, 'period_at' => now()->toIso8601String(),
+                'period' => $period, 'period_at' => now(new \DateTimeZone('America/Sao_Paulo'))->toIso8601String(),
                 'barber_id' => $barber->id, 'per_page' => 10,
             ];
             $this->get('/dashboard?'.http_build_query($query))->assertInertia(fn (Assert $page) => $page
@@ -520,7 +520,7 @@ class DashboardTest extends TestCase
         foreach (['/dashboard', '/dashboard/scheduled'] as $path) {
             foreach ([-1, 999999, 'invalid'] as $invalidId) {
                 $this->getJson($path.'?'.http_build_query([
-                    'period' => 'day', 'period_at' => now()->toIso8601String(), 'barber_id' => $invalidId,
+                    'period' => 'day', 'period_at' => now(new \DateTimeZone('America/Sao_Paulo'))->toIso8601String(), 'barber_id' => $invalidId,
                 ]))->assertUnprocessable();
             }
         }
@@ -685,7 +685,7 @@ class DashboardTest extends TestCase
             ->where('indicators.periods.0', ['period' => 'day', 'completed' => 2, 'scheduled' => 1, 'total' => 3])
             ->where('indicators.periods.1', ['period' => 'week', 'completed' => 2, 'scheduled' => 2, 'total' => 4])
             ->has('servicesTimeline.series', 3));
-        $query = ['period' => 'day', 'period_at' => now()->toIso8601String()];
+        $query = ['period' => 'day', 'period_at' => now(new \DateTimeZone('America/Sao_Paulo'))->toIso8601String()];
         $this->getJson('/dashboard/scheduled?'.http_build_query($query))->assertOk()
             ->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $scheduled->id)
             ->assertJsonMissingPath('data.0.expected_cents');
@@ -729,7 +729,7 @@ class DashboardTest extends TestCase
         $this->actingAs($barber)->get('/dashboard?per_page=10&page=2')
             ->assertInertia(fn (Assert $page) => $page->where('appointments.total', 12)->has('appointments.data', 2));
         $this->getJson('/dashboard/scheduled?'.http_build_query([
-            'period' => 'day', 'period_at' => now()->toIso8601String(), 'page' => 2,
+            'period' => 'day', 'period_at' => now(new \DateTimeZone('America/Sao_Paulo'))->toIso8601String(), 'page' => 2,
         ]))->assertOk()->assertJsonPath('total', 12)->assertJsonCount(2, 'data');
         $empty = User::factory()->create(['role' => 'barber']);
         $this->actingAs($empty)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
@@ -755,7 +755,7 @@ class DashboardTest extends TestCase
         foreach ([
             ['date_from' => '2026-11-09', 'date_to' => '2026-11-09'],
             ['chart_day' => '2026-11-09', 'service_id' => $today->service_id],
-            ['period' => 'day', 'period_at' => now()->toIso8601String()],
+            ['period' => 'day', 'period_at' => now(new \DateTimeZone('America/Sao_Paulo'))->toIso8601String()],
         ] as $query) {
             $this->get('/dashboard?'.http_build_query($query))->assertInertia(fn (Assert $page) => $page
                 ->where('appointments.total', 1)->where('appointments.data.0.id', $today->id)
@@ -832,7 +832,7 @@ class DashboardTest extends TestCase
                 'missing_completed' => 0, 'missing_scheduled' => 0,
             ]));
         $this->getJson('/dashboard/scheduled?'.http_build_query([
-            'period' => 'day', 'period_at' => now()->toIso8601String(), 'barber_id' => $barber->id,
+            'period' => 'day', 'period_at' => now(new \DateTimeZone('America/Sao_Paulo'))->toIso8601String(), 'barber_id' => $barber->id,
         ]))->assertOk()->assertJsonPath('data.0.expected_cents', 3030)
             ->assertJsonPath('data.1.expected_cents', 2001)
             ->assertJsonPath('data.2.expected_cents', 0);
@@ -875,7 +875,7 @@ class DashboardTest extends TestCase
             $sum = 0;
             foreach ([1, 2] as $page) {
                 $response = $this->getJson('/dashboard/scheduled?'.http_build_query([
-                    'period' => $period, 'period_at' => now()->toIso8601String(),
+                    'period' => $period, 'period_at' => now(new \DateTimeZone('America/Sao_Paulo'))->toIso8601String(),
                     'barber_id' => $barber->id, 'page' => $page,
                 ]))->assertOk()->assertJsonPath('total', 12);
                 $sum += array_sum(array_column($response->json('data'), 'expected_cents'));

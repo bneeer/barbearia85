@@ -29,10 +29,10 @@ class RetryEmailNotification
             NotificationAttempt::create([
                 'notification_id' => $id, 'number' => $notification->attempts,
                 'result' => 'retry_requested', 'requested_by' => $actorId,
-                'created_at' => now(), 'finished_at' => now(),
+                'created_at' => now(new \DateTimeZone('America/Sao_Paulo')), 'finished_at' => now(new \DateTimeZone('America/Sao_Paulo')),
             ]);
             $notification->update([
-                'status' => 'pending', 'attempts' => 0, 'next_attempt_at' => now(),
+                'status' => 'pending', 'attempts' => 0, 'next_attempt_at' => now(new \DateTimeZone('America/Sao_Paulo')),
                 'failure_code' => null, 'lock_token' => null, 'locked_until' => null,
             ]);
         });

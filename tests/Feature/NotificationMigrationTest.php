@@ -52,7 +52,7 @@ class NotificationMigrationTest extends TestCase
         $message = $this->message(['user_id' => $user->id]);
         $this->assertNull($message->client_id);
         $this->assertSame(0, $message->fresh()->attempts);
-        $message->attemptsHistory()->create(['number' => 1, 'created_at' => now()]);
+        $message->attemptsHistory()->create(['number' => 1, 'created_at' => now(new \DateTimeZone('America/Sao_Paulo'))]);
         $user->delete();
         $this->assertNull($message->fresh()->user_id);
         $this->assertDatabaseCount('notification_attempts', 1);
@@ -74,7 +74,7 @@ class NotificationMigrationTest extends TestCase
         ]);
         $appointment = Appointment::create([
             'barbershop_id' => $shop->id, 'client_id' => $client->id, 'user_id' => $user->id,
-            'service_id' => $service->id, 'start_time' => now()->addDay(), 'end_time' => now()->addDay()->addMinutes(40),
+            'service_id' => $service->id, 'start_time' => now(new \DateTimeZone('America/Sao_Paulo'))->addDay(), 'end_time' => now(new \DateTimeZone('America/Sao_Paulo'))->addDay()->addMinutes(40),
         ]);
         $this->assertFalse($appointment->fresh()->email_notifications_enabled);
         foreach (['pending', 'sent', 'skipped', 'simulated', 'failed', 'processing'] as $status) {
@@ -101,7 +101,7 @@ class NotificationMigrationTest extends TestCase
     {
         $event = [
             'event_id' => 'event-1', 'provider_id' => 'provider-1',
-            'type' => 'email.delivered', 'occurred_at' => now(), 'created_at' => now(),
+            'type' => 'email.delivered', 'occurred_at' => now(new \DateTimeZone('America/Sao_Paulo')), 'created_at' => now(new \DateTimeZone('America/Sao_Paulo')),
         ];
         DB::table('notification_webhook_events')->insert($event);
         $this->expectException(QueryException::class);

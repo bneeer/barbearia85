@@ -30,7 +30,7 @@ class PrivacyRequestController extends Controller
             'actor_id' => $request->user()->id,
             'event' => $event,
             'details' => $details,
-            'created_at' => now(),
+            'created_at' => now(new \DateTimeZone('America/Sao_Paulo')),
         ]);
     }
 
@@ -201,7 +201,7 @@ class PrivacyRequestController extends Controller
             if ($item->clients()->withoutGlobalScopes()->where('clients.id', $client->id)->exists()) {
                 throw ValidationException::withMessages(['client_id' => 'Cadastro já vinculado.']);
             }
-            $item->clients()->attach($client->id, ['linked_by' => $request->user()->id, 'created_at' => now()]);
+            $item->clients()->attach($client->id, ['linked_by' => $request->user()->id, 'created_at' => now(new \DateTimeZone('America/Sao_Paulo'))]);
             $item->update(['internal_search_done' => false, 'external_search_done' => false, 'shared_agents_done' => false, 'response_sent' => false]);
             $this->event($item, $request, 'client_linked', ['client_id' => $client->id]);
         });
@@ -257,7 +257,7 @@ class PrivacyRequestController extends Controller
                 throw ValidationException::withMessages(['retained_categories' => 'Informe as categorias preservadas ou pendentes.']);
             }
             $item->update([
-                ...$data, 'status' => 'closed', 'completed_at' => now(), 'completed_by' => $request->user()->id,
+                ...$data, 'status' => 'closed', 'completed_at' => now(new \DateTimeZone('America/Sao_Paulo')), 'completed_by' => $request->user()->id,
             ]);
             $this->event($item, $request, 'completed', $data);
         });

@@ -9,6 +9,7 @@ use App\Models\Notification;
 use App\Models\Scopes\BarbershopScope;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -51,7 +52,7 @@ class BookingNotifications
     {
         return Appointment::withoutGlobalScope(BarbershopScope::class)
             ->where('email_notifications_enabled', false)
-            ->where('status', 'scheduled')->where('start_time', '>', now())
+            ->where('status', 'scheduled')->where('start_time', '>', now(new \DateTimeZone('America/Sao_Paulo')))
             ->whereNotExists(function ($query) {
                 $query->selectRaw('1')->from('notifications')
                     ->whereColumn('notifications.appointment_id', 'appointments.id')
@@ -103,6 +104,86 @@ class BookingNotifications
         });
     }
 
+    public function queueDueReminders(): int
+    {
+        if (! config('notifications.email_enabled')) {
+            return 0;
+        }
+
+        $now = now();
+        $queued = 0;
+        Appointment::withoutGlobalScope(BarbershopScope::class)
+            ->where('email_notifications_enabled', true)
+            ->where('status', 'scheduled')
+            ->whereBetween('start_time', [$now->copy()->addHours(48)->subMinute(), $now->copy()->addHours(48)])
+            ->orderBy('id')
+            ->chunkById(100, function ($appointments) use ($now, &$queued) {
+                foreach ($appointments as $appointment) {
+                    if ($this->queueReminder($appointment->id, $now)) {
+                        $queued++;
+                    }
+                }
+            });
+
+        return $queued;
+    }
+
+    private function queueReminder(int $id, CarbonInterface $now): bool
+    {
+        return DB::transaction(function () use ($id, $now) {
+            $appointment = Appointment::withoutGlobalScope(BarbershopScope::class)
+                ->whereKey($id)->lockForUpdate()->first();
+            if (! $appointment || ! $appointment->email_notifications_enabled
+                || $appointment->status !== 'scheduled'
+                || $appointment->start_time->lt($now->copy()->addHours(48)->subMinute())
+                || $appointment->start_time->gt($now->copy()->addHours(48))
+                || $appointment->created_at->gt($appointment->start_time->copy()->subHours(48))) {
+                return false;
+            }
+
+            $event = $this->reminderEventId($appointment);
+            if (Notification::where('event_id', $event)->where('template', 'booking_reminder')->exists()) {
+                return false;
+            }
+
+            $shop = $appointment->barbershop()->firstOrFail();
+            $client = $appointment->client()->withoutGlobalScopes()->firstOrFail();
+            $barber = $appointment->barber()->firstOrFail();
+            $services = $appointment->services()->withoutGlobalScopes()->get();
+            if ($services->isEmpty()) {
+                $services = collect([$appointment->service()->withoutGlobalScopes()->withTrashed()->firstOrFail()]);
+            }
+            $start = CarbonImmutable::instance($appointment->start_time)->setTimezone($shop->timezone);
+            $payload = $this->confirmationPayload($client, $shop, $barber, $services, $start);
+            $cancelUrl = app(BookingCancellations::class)->reminderLink($appointment);
+
+            app(EmailOutbox::class)->create([
+                'appointment_id' => $appointment->id,
+                'client_id' => $client->id,
+                'barbershop_id' => $shop->id,
+                'recipient' => $client->email,
+                'audience' => 'client',
+                'event_id' => $event,
+                'template' => 'booking_reminder',
+                'payload' => [...$payload, 'recipient' => $client->email],
+                'secret' => $cancelUrl ? ['cancellation_url' => $cancelUrl] : null,
+                'expires_at' => $appointment->start_time,
+            ]);
+
+            return true;
+        }, 3);
+    }
+
+    private function reminderEventId(Appointment $appointment): string
+    {
+        $hash = substr(hash('sha256', "booking_reminder|{$appointment->id}|{$appointment->start_time->getTimestamp()}"), 0, 32);
+        $hash[12] = '5';
+        $hash[16] = '8';
+
+        return substr($hash, 0, 8).'-'.substr($hash, 8, 4).'-'.substr($hash, 12, 4).'-'
+            .substr($hash, 16, 4).'-'.substr($hash, 20, 12);
+    }
+
     private function confirmationPayload(
         Client $client, Barbershop $shop, User $barber, Collection $services, CarbonImmutable $start,
     ): array {
@@ -121,6 +202,9 @@ class BookingNotifications
     public function changed(Appointment $appointment, Barbershop $shop, string $previousStart, bool $cancelledByClient = false): void
     {
         $cancelledByClient = $cancelledByClient && $appointment->status === 'cancelled';
+        Notification::where('appointment_id', $appointment->id)->where('type', 'email')
+            ->where('template', 'booking_reminder')->where('status', 'pending')
+            ->update(['status' => 'skipped', 'failure_code' => 'superseded']);
         if ((! $appointment->email_notifications_enabled && ! $cancelledByClient) || ! config('notifications.email_enabled')) {
             return;
         }
@@ -167,7 +251,7 @@ class BookingNotifications
                 'recipient' => $recipient['email'], 'audience' => $recipient['audience'],
                 'event_id' => $event, 'template' => $template,
                 'payload' => [...$data, 'recipient' => $recipient['email']],
-                'expires_at' => $template === 'booking_cancellation' ? now()->addDay() : $appointment->start_time,
+                'expires_at' => $template === 'booking_cancellation' ? now(new \DateTimeZone('America/Sao_Paulo'))->addDay() : $appointment->start_time,
             ]);
         }
     }

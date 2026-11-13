@@ -17,7 +17,7 @@ class EmailOutbox
         $notification = Notification::create([
             ...$attributes, 'event_id' => $event, 'type' => 'email', 'status' => 'pending',
             'deduplication_key' => hash('sha256', $event.'|'.mb_strtolower($attributes['recipient'])),
-            'next_attempt_at' => now(),
+            'next_attempt_at' => now(new \DateTimeZone('America/Sao_Paulo')),
         ]);
         DB::afterCommit(function () use ($notification) {
             try {
@@ -49,7 +49,7 @@ class EmailOutbox
                 'recipient' => $user->email, 'user_id' => $user->id, 'audience' => 'account',
                 'template' => $template, 'payload' => ['name' => $user->name],
                 'secret' => $url ? ['url' => $url] : null,
-                'expires_at' => $template === 'password_changed' ? now()->addDay() : now()->addMinutes($minutes),
+                'expires_at' => $template === 'password_changed' ? now(new \DateTimeZone('America/Sao_Paulo'))->addDay() : now(new \DateTimeZone('America/Sao_Paulo'))->addMinutes($minutes),
             ]);
         });
     }

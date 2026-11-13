@@ -50,6 +50,7 @@ class NotificationEmail extends Mailable
             'reset_password' => 'Redefina sua senha',
             'password_changed' => 'Sua senha foi alterada',
             'booking_confirmation' => 'Agendamento confirmado',
+            'booking_reminder' => 'Lembrete do seu atendimento',
             'booking_rescheduled' => 'Agendamento reagendado',
             'booking_cancellation' => 'Agendamento cancelado',
             'booking_cancellation_request' => 'Seus agendamentos e opções de cancelamento',
@@ -76,6 +77,7 @@ class NotificationEmail extends Mailable
             'booking_confirmation' => $this->record->audience === 'client'
                 ? 'Seu horário está reservado. Esperamos você para cuidar do seu estilo!'
                 : 'Um novo atendimento foi confirmado na agenda da unidade.',
+            'booking_reminder' => 'Seu atendimento está chegando. Confira os detalhes e o endereço da unidade.',
             'booking_rescheduled' => 'O horário do atendimento foi atualizado. Confira os novos detalhes abaixo.',
             'booking_cancellation' => ($payload['cancelled_by_client'] ?? false)
                 ? 'O cliente confirmou o cancelamento pelo link enviado por e-mail. Este horário não está mais reservado.'
@@ -90,6 +92,8 @@ class NotificationEmail extends Mailable
             'account' => $account, 'audience' => $this->record->audience,
             'startsAt' => $account ? null : $date($payload['starts_at'] ?? null),
             'previousStartsAt' => $account ? null : $date($payload['previous_starts_at'] ?? null),
+            'cancellationUrl' => $this->record->template === 'booking_reminder'
+                ? ($this->record->secret['cancellation_url'] ?? null) : null,
             'actionUrl' => $this->record->secret['url'] ?? ($this->record->audience === 'client' ? null : ($account ? null : route('schedule.index'))),
             'actionLabel' => match ($this->record->template) {
                 'verify_email' => 'Verificar e-mail',

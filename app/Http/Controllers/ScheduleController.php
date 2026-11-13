@@ -248,11 +248,11 @@ class ScheduleController extends Controller
                             : null,
                     'canCheckout' => $request->user()->isAdmin()
                         && $appointment->status === 'scheduled'
-                        && $appointment->start_time->lte(CarbonImmutable::now())
+                        && $appointment->start_time->lte(CarbonImmutable::now(new \DateTimeZone('America/Sao_Paulo')))
                         && $cashRegisterOpen,
                     'checkoutUnavailableReason' => $request->user()->isAdmin()
                         && $appointment->status === 'scheduled'
-                        && $appointment->start_time->lte(CarbonImmutable::now())
+                        && $appointment->start_time->lte(CarbonImmutable::now(new \DateTimeZone('America/Sao_Paulo')))
                         && ! $cashRegisterOpen
                             ? 'Abra o caixa desta unidade para finalizar atendimentos.'
                             : null,
@@ -294,7 +294,7 @@ class ScheduleController extends Controller
                 throw ValidationException::withMessages(['status' => 'Somente agendamentos pendentes podem ser marcados como não comparecimento.']);
             }
             $eligibleAt = $appointment->start_time->copy()->addMinutes($shop->no_show_tolerance_minutes);
-            if (CarbonImmutable::now()->lt($eligibleAt)) {
+            if (CarbonImmutable::now(new \DateTimeZone('America/Sao_Paulo'))->lt($eligibleAt)) {
                 throw ValidationException::withMessages([
                     'status' => "Aguarde a tolerância de {$shop->no_show_tolerance_minutes} minutos após o início agendado para marcar não comparecimento.",
                 ]);
@@ -340,7 +340,7 @@ class ScheduleController extends Controller
             if ($appointment->status !== 'scheduled' || $appointment->checkout()->exists()) {
                 throw ValidationException::withMessages(['status' => 'Somente agendamentos pendentes podem ser finalizados.']);
             }
-            if ($appointment->start_time->gt(CarbonImmutable::now())) {
+            if ($appointment->start_time->gt(CarbonImmutable::now(new \DateTimeZone('America/Sao_Paulo')))) {
                 throw ValidationException::withMessages(['start_time' => 'Não é possível finalizar um atendimento antes do horário de início do agendamento.']);
             }
             $cashRegister = CashRegister::query()
@@ -475,7 +475,7 @@ class ScheduleController extends Controller
                 $duration = (int) $services->sum('duration');
                 $actualEnd = $start->addMinutes($duration);
                 $hours = $shop->opening_hours[strtolower($start->format('l'))] ?? null;
-                if ($start->lte(CarbonImmutable::now()) || ! $start->isSameDay($end)
+                if ($start->lte(CarbonImmutable::now(new \DateTimeZone('America/Sao_Paulo'))) || ! $start->isSameDay($end)
                     || $end->getTimestamp() !== $actualEnd->getTimestamp()
                     || ! $shop->is_open || ! $hours || $hours['closed']
                     || $start->lt($start->startOfDay()->setTimeFromTimeString($hours['open']))

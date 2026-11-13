@@ -68,8 +68,8 @@ class CashRegisterTest extends TestCase
             'client_id' => $client->id,
             'user_id' => $this->barber->id,
             'service_id' => $service->id,
-            'start_time' => now()->subHour(),
-            'end_time' => now()->subMinutes(30),
+            'start_time' => now(new \DateTimeZone('America/Sao_Paulo'))->subHour(),
+            'end_time' => now(new \DateTimeZone('America/Sao_Paulo'))->subMinutes(30),
             'status' => 'completed',
         ]);
         AppointmentCheckout::create([

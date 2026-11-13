@@ -57,7 +57,7 @@ class BookingCancellationTest extends TestCase
         $appointment = Appointment::create([
             'barbershop_id' => $shop->id, 'client_id' => $client->id,
             'user_id' => $barber->id, 'service_id' => $service->id,
-            'start_time' => now()->addHours($hours), 'end_time' => now()->addHours($hours)->addMinutes(40),
+            'start_time' => now(new \DateTimeZone('America/Sao_Paulo'))->addHours($hours), 'end_time' => now(new \DateTimeZone('America/Sao_Paulo'))->addHours($hours)->addMinutes(40),
             'status' => 'scheduled',
         ]);
         $appointment->services()->attach($service);
@@ -164,7 +164,7 @@ class BookingCancellationTest extends TestCase
         $token = explode('/', parse_url($url, PHP_URL_PATH))[2];
         $grant = BookingCancellationRequest::firstOrFail();
         $this->assertSame(hash('sha256', $token), $grant->token_hash);
-        $this->assertSame(now()->addHour()->getTimestamp(), $grant->expires_at->getTimestamp());
+        $this->assertSame(now(new \DateTimeZone('America/Sao_Paulo'))->addHour()->getTimestamp(), $grant->expires_at->getTimestamp());
         $this->assertStringNotContainsString($token, json_encode($notification->payload));
         $this->assertStringNotContainsString($token, $notification->getRawOriginal('secret'));
         $this->assertStringNotContainsString('cliente@example.com', $grant->getRawOriginal('email'));
@@ -174,6 +174,15 @@ class BookingCancellationTest extends TestCase
         $this->assertSame('simulated', $notification->status);
         $this->assertStringContainsString('Cancelar todos', $notification->message['text']);
         $this->assertStringNotContainsString($token, $notification->getRawOriginal('message'));
+    }
+
+    public function test_cancellation_action_buttons_are_red(): void
+    {
+        $this->appointment(hours: 72);
+        $this->appointment(hours: 72);
+        $notification = $this->requestEmail();
+
+        $this->assertSame(3, substr_count((new NotificationEmail($notification))->render(), 'background:#c62828;color:#fff'));
     }
 
     public function test_ineligible_reservations_are_listed_without_actions_and_prevent_bulk_link(): void
@@ -309,7 +318,7 @@ class BookingCancellationTest extends TestCase
         $first = $this->appointment();
         $second = $this->appointment();
         $notification = $this->requestEmail();
-        $second->update(['start_time' => now()->addDays(3), 'end_time' => now()->addDays(3)->addMinutes(40)]);
+        $second->update(['start_time' => now(new \DateTimeZone('America/Sao_Paulo'))->addDays(3), 'end_time' => now(new \DateTimeZone('America/Sao_Paulo'))->addDays(3)->addMinutes(40)]);
         $this->from('/')->post($this->link($notification, 'all'))->assertSessionHasErrors('cancellation');
         $this->assertScheduled($first, $second);
         $second->update(['status' => 'cancelled']);
@@ -359,7 +368,7 @@ class BookingCancellationTest extends TestCase
         $this->travel(59)->minutes();
         $this->get($this->link($notification, $zero->id))->assertInertia(fn (Assert $page) => $page->where('canCancel', true));
         // Keep the link valid while reaching the exact start of the appointment.
-        BookingCancellationRequest::latest('id')->firstOrFail()->update(['expires_at' => now()->addHour()]);
+        BookingCancellationRequest::latest('id')->firstOrFail()->update(['expires_at' => now(new \DateTimeZone('America/Sao_Paulo'))->addHour()]);
         $this->travel(1)->minutes();
         $this->post($this->link($notification, $zero->id))->assertSessionHasErrors('cancellation');
         $this->assertScheduled($zero);

@@ -22,9 +22,9 @@ class DispatchEmailNotifications extends Command
         Notification::where('type', 'email')->whereNotNull('deduplication_key')
             ->where(function ($query) {
                 $query->where(function ($query) {
-                    $query->where('status', 'pending')->where('next_attempt_at', '<=', now());
+                    $query->where('status', 'pending')->where('next_attempt_at', '<=', now(new \DateTimeZone('America/Sao_Paulo')));
                 })->orWhere(function ($query) {
-                    $query->where('status', 'processing')->where('locked_until', '<=', now());
+                    $query->where('status', 'processing')->where('locked_until', '<=', now(new \DateTimeZone('America/Sao_Paulo')));
                 });
             })->chunkById(100, function ($records) {
                 foreach ($records as $record) {

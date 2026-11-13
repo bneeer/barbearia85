@@ -73,7 +73,7 @@ class PrivacyRequestsTest extends TestCase
     public function test_only_administrators_can_access_any_privacy_route(): void
     {
         [$admin, $barber, $first] = $this->setupClients();
-        $this->travelTo(now()->setDate(2026, 11, 10));
+        $this->travelTo(now(new \DateTimeZone('America/Sao_Paulo'))->setDate(2026, 11, 10));
         $this->actingAs($admin)->post('/privacy-requests', $this->createData($admin));
         $id = PrivacyRequest::firstOrFail()->id;
         $this->actingAs($barber);
@@ -97,7 +97,7 @@ class PrivacyRequestsTest extends TestCase
     public function test_protocol_deadline_validation_identity_linking_and_audit(): void
     {
         [$admin, , $first, $match] = $this->setupClients();
-        $this->travelTo(now()->setDate(2026, 11, 10));
+        $this->travelTo(now(new \DateTimeZone('America/Sao_Paulo'))->setDate(2026, 11, 10));
         $this->actingAs($admin);
         $this->post('/privacy-requests', [...$this->createData($admin), 'due_date' => '2026-11-17'])
             ->assertSessionHasErrors('due_reason');
@@ -121,7 +121,7 @@ class PrivacyRequestsTest extends TestCase
     public function test_deletion_is_preview_only_and_cannot_be_marked_fulfilled(): void
     {
         [$admin, , $first] = $this->setupClients();
-        $this->travelTo(now()->setDate(2026, 11, 10));
+        $this->travelTo(now(new \DateTimeZone('America/Sao_Paulo'))->setDate(2026, 11, 10));
         $this->actingAs($admin)->post('/privacy-requests', $this->createData($admin, 'deletion'));
         $item = PrivacyRequest::firstOrFail();
         $this->post("/privacy-requests/{$item->id}/complete", ['result' => 'fulfilled'])
@@ -149,7 +149,7 @@ class PrivacyRequestsTest extends TestCase
     public function test_history_and_preview_include_archived_and_future_appointments_across_units(): void
     {
         [$admin, $barber, $first] = $this->setupClients();
-        $this->travelTo(now()->setDate(2026, 11, 10));
+        $this->travelTo(now(new \DateTimeZone('America/Sao_Paulo'))->setDate(2026, 11, 10));
         $service = Service::withoutGlobalScopes()->create([
             'barbershop_id' => $first->barbershop_id, 'name' => 'Corte', 'description' => 'Corte',
             'duration' => 40, 'price' => 50, 'is_active' => true,
@@ -157,11 +157,11 @@ class PrivacyRequestsTest extends TestCase
         $data = [
             'barbershop_id' => $first->barbershop_id, 'client_id' => $first->id,
             'user_id' => $barber->id, 'service_id' => $service->id,
-            'start_time' => now()->addDay(), 'end_time' => now()->addDay()->addMinutes(40),
-            'status' => 'scheduled', 'created_at' => now(), 'updated_at' => now(),
+            'start_time' => now(new \DateTimeZone('America/Sao_Paulo'))->addDay(), 'end_time' => now(new \DateTimeZone('America/Sao_Paulo'))->addDay()->addMinutes(40),
+            'status' => 'scheduled', 'created_at' => now(new \DateTimeZone('America/Sao_Paulo')), 'updated_at' => now(new \DateTimeZone('America/Sao_Paulo')),
         ];
         DB::table('appointments')->insert($data);
-        DB::table('appointments')->insert([...$data, 'status' => 'cancelled', 'deleted_at' => now()]);
+        DB::table('appointments')->insert([...$data, 'status' => 'cancelled', 'deleted_at' => now(new \DateTimeZone('America/Sao_Paulo'))]);
         $this->actingAs($admin)->get("/clients/{$first->id}")->assertOk()
             ->assertInertia(fn (Assert $page) => $page->where('appointments.total', 2));
         $this->post('/privacy-requests', $this->createData($admin, 'deletion'));
@@ -178,7 +178,7 @@ class PrivacyRequestsTest extends TestCase
     public function test_other_types_require_description_and_deadlines_do_not_reset(): void
     {
         [$admin] = $this->setupClients();
-        $this->travelTo(now()->setDate(2026, 11, 20));
+        $this->travelTo(now(new \DateTimeZone('America/Sao_Paulo'))->setDate(2026, 11, 20));
         $this->actingAs($admin);
         $this->post('/privacy-requests', $this->createData($admin, 'other'))->assertSessionHasErrors('other_type');
         $this->post('/privacy-requests', [

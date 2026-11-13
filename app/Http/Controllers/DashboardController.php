@@ -40,9 +40,9 @@ class DashboardController extends Controller
             'filters' => $filters,
             'barbershops' => fn () => $this->availableBarbershops($request->user()),
             'shortcuts' => fn () => $this->rangeShortcuts(),
-            'indicators' => fn () => $dashboard->indicators(CarbonImmutable::now(), $request->user()),
+            'indicators' => fn () => $dashboard->indicators(CarbonImmutable::now(new \DateTimeZone('America/Sao_Paulo')), $request->user()),
             'summary' => fn () => $dashboard->rangeSummary($start, $end, $barbershopId, $request->user()),
-            'servicesTimeline' => fn () => $dashboard->servicesTimeline(CarbonImmutable::now(), $request->user()),
+            'servicesTimeline' => fn () => $dashboard->servicesTimeline(CarbonImmutable::now(new \DateTimeZone('America/Sao_Paulo')), $request->user()),
             'rangeTimeline' => fn () => $dashboard->servicesTimelineForRange($start, $end, $barbershopId, $request->user()),
             'appointments' => $query->orderByDesc('start_time')->orderByDesc('id')
                 ->paginate($filters['per_page'] ?? 10)->withQueryString()

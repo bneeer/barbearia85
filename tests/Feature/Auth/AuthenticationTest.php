@@ -46,7 +46,7 @@ class AuthenticationTest extends TestCase
         $user->forceFill([
             'two_factor_secret' => encrypt('test-secret'),
             'two_factor_recovery_codes' => encrypt(json_encode(['code1', 'code2'])),
-            'two_factor_confirmed_at' => now(),
+            'two_factor_confirmed_at' => now(new \DateTimeZone('America/Sao_Paulo')),
         ])->save();
 
         $response = $this->post(route('login'), [

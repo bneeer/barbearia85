@@ -70,7 +70,7 @@ class EmailNotificationsTest extends TestCase
         $appointment = Appointment::create([
             'barbershop_id' => $this->shop->id, 'client_id' => $this->client->id,
             'user_id' => $this->barber->id, 'service_id' => $this->service->id,
-            'start_time' => now()->addDays(2), 'end_time' => now()->addDays(2)->addMinutes(40),
+            'start_time' => now(new \DateTimeZone('America/Sao_Paulo'))->addDays(2), 'end_time' => now(new \DateTimeZone('America/Sao_Paulo'))->addDays(2)->addMinutes(40),
             'status' => 'scheduled',
         ]);
         $appointment->services()->attach($this->service);
@@ -122,6 +122,50 @@ class EmailNotificationsTest extends TestCase
         $this->assertSame(2, Notification::where('type', 'email')->count());
     }
 
+    public function test_scheduler_queues_one_48_hour_reminder_with_a_discreet_safe_cancellation_link(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-11 12:00:00', 'UTC'));
+        $appointment = $this->appointment();
+        $appointment->update(['start_time' => now()->addHours(48), 'end_time' => now()->addHours(48)->addMinutes(40)]);
+        $this->confirmation($appointment);
+        $appointment->forceFill(['created_at' => $appointment->start_time->copy()->subHours(49)])->save();
+
+        $recent = $this->appointment();
+        $recent->update(['start_time' => now()->addHours(47), 'end_time' => now()->addHours(47)->addMinutes(40)]);
+        $this->confirmation($recent);
+
+        $this->artisan('notifications:reminders')->assertSuccessful();
+        $reminder = Notification::where('template', 'booking_reminder')->firstOrFail();
+        $this->assertSame($appointment->id, $reminder->appointment_id);
+        $this->assertSame('client', $reminder->audience);
+        $this->assertSame($this->client->email, $reminder->recipient);
+        $this->assertSame('Corte', $reminder->payload['service']);
+        $this->assertSame('Rua Central, 85', $reminder->payload['address']);
+
+        $cancelUrl = $reminder->secret['cancellation_url'];
+        $html = (new NotificationEmail($reminder))->render();
+        $text = view('mail.notification-text', (new NotificationEmail($reminder))->data())->render();
+        foreach ([$html, $text] as $body) {
+            $this->assertStringContainsString('Lembrete do seu atendimento', $body);
+            $this->assertStringContainsString('Corte', $body);
+            $this->assertStringContainsString('Centro', $body);
+            $this->assertStringContainsString('Rua Central, 85', $body);
+            $this->assertStringContainsString($cancelUrl, $body);
+        }
+        $this->assertStringContainsString('Se precisar cancelar', $html);
+        $this->assertStringNotContainsString('background:#c62828', $html);
+
+        $this->get($cancelUrl)->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('canCancel', true));
+        $this->assertSame('scheduled', $appointment->fresh()->status);
+        $this->post($cancelUrl)->assertSessionHasNoErrors();
+        $this->assertSame('cancelled', $appointment->fresh()->status);
+        $this->assertSame('skipped', $reminder->fresh()->status);
+
+        $this->artisan('notifications:reminders')->assertSuccessful();
+        $this->assertSame(1, Notification::where('template', 'booking_reminder')->count());
+    }
+
     public function test_existing_and_disabled_bookings_stay_ineligible_without_explicit_backfill(): void
     {
         $old = $this->appointment();
@@ -161,7 +205,7 @@ class EmailNotificationsTest extends TestCase
         config(['notifications.email_enabled' => false]);
         $legacy = $this->confirmation();
         $appointment = $legacy->appointment;
-        $appointment->update(['start_time' => now()->addDays(3)]);
+        $appointment->update(['start_time' => now(new \DateTimeZone('America/Sao_Paulo'))->addDays(3)]);
         $this->client->update(['email' => 'current@example.com']);
         config(['notifications.email_enabled' => true]);
         Queue::fake();
@@ -198,8 +242,8 @@ class EmailNotificationsTest extends TestCase
     public function test_retroactive_selection_excludes_past_cancelled_completed_deleted_and_already_enabled_bookings(): void
     {
         $this->confirmation();
-        $this->appointment()->update(['start_time' => now()->subSecond()]);
-        $this->appointment()->update(['start_time' => now()]);
+        $this->appointment()->update(['start_time' => now(new \DateTimeZone('America/Sao_Paulo'))->subSecond()]);
+        $this->appointment()->update(['start_time' => now(new \DateTimeZone('America/Sao_Paulo'))]);
         $this->appointment()->update(['status' => 'cancelled']);
         $this->appointment()->update(['status' => 'completed']);
         $this->appointment()->delete();
@@ -219,8 +263,8 @@ class EmailNotificationsTest extends TestCase
             ['status' => 'pending', 'attempts' => 1],
             ['status' => 'pending', 'failure_code' => 'smtp_result_unknown'],
             ['status' => 'pending', 'provider_id' => 'legacy-id'],
-            ['status' => 'pending', 'sent_at' => now()],
-            ['status' => 'pending', 'first_attempt_at' => now()],
+            ['status' => 'pending', 'sent_at' => now(new \DateTimeZone('America/Sao_Paulo'))],
+            ['status' => 'pending', 'first_attempt_at' => now(new \DateTimeZone('America/Sao_Paulo'))],
         ] as $attributes) {
             $appointment = $this->appointment();
             Notification::create([
@@ -235,7 +279,7 @@ class EmailNotificationsTest extends TestCase
             'appointment_id' => $appointment->id, 'client_id' => $this->client->id,
             'type' => 'email', 'template' => 'booking_confirmation', 'status' => 'pending', 'payload' => [],
         ]);
-        $history->attemptsHistory()->create(['number' => 1, 'result' => 'interrupted', 'created_at' => now()]);
+        $history->attemptsHistory()->create(['number' => 1, 'result' => 'interrupted', 'created_at' => now(new \DateTimeZone('America/Sao_Paulo'))]);
         $before = DB::table('notifications')->get()->toJson();
         $this->artisan('notifications:backfill', ['--write' => true])
             ->expectsOutput('Agendamentos enfileirados: 0.')->assertSuccessful();
@@ -309,7 +353,7 @@ class EmailNotificationsTest extends TestCase
     public function test_rescheduling_and_cancellation_create_immutable_events_after_confirmation_was_sent(): void
     {
         $record = $this->confirmation();
-        $record->update(['status' => 'sent', 'provider_id' => 'previous', 'sent_at' => now()]);
+        $record->update(['status' => 'sent', 'provider_id' => 'previous', 'sent_at' => now(new \DateTimeZone('America/Sao_Paulo'))]);
         $appointment = $record->appointment;
         $previous = $appointment->start_time->toIso8601String();
         $appointment->update(['start_time' => $appointment->start_time->addHour()]);
@@ -348,7 +392,7 @@ class EmailNotificationsTest extends TestCase
                 throw new EmailDeliveryFailure('smtp_temporary_rejection', true);
             });
         foreach ([60, 300, 900, 3600, null] as $index => $delay) {
-            $before = now();
+            $before = now(new \DateTimeZone('America/Sao_Paulo'));
             app(EmailDelivery::class)->send($record->id);
             $record->refresh();
             $this->assertSame($index + 1, $record->attempts);
@@ -380,10 +424,10 @@ class EmailNotificationsTest extends TestCase
     public function test_lease_prevents_parallel_claim_and_blocks_interrupted_attempt(): void
     {
         $record = $this->confirmation();
-        $record->update(['status' => 'processing', 'attempts' => 1, 'locked_until' => now()->addMinutes(2)]);
+        $record->update(['status' => 'processing', 'attempts' => 1, 'locked_until' => now(new \DateTimeZone('America/Sao_Paulo'))->addMinutes(2)]);
         app(EmailDelivery::class)->send($record->id);
         $this->assertSame(1, $record->fresh()->attempts);
-        $record->update(['locked_until' => now()->subSecond()]);
+        $record->update(['locked_until' => now(new \DateTimeZone('America/Sao_Paulo'))->subSecond()]);
         $this->mock(SmtpGateway::class)->shouldNotReceive('send');
         app(EmailDelivery::class)->send($record->id);
         $this->assertSame(1, $record->fresh()->attempts);
@@ -395,7 +439,7 @@ class EmailNotificationsTest extends TestCase
     {
         $record = $this->confirmation();
         Queue::fake();
-        Notification::whereKeyNot($record->id)->where('type', 'email')->update(['next_attempt_at' => now()->addHour()]);
+        Notification::whereKeyNot($record->id)->where('type', 'email')->update(['next_attempt_at' => now(new \DateTimeZone('America/Sao_Paulo'))->addHour()]);
         $this->artisan('notifications:dispatch')->assertSuccessful();
         Queue::assertPushed(SendEmailNotification::class, 1);
         Queue::assertPushed(SendEmailNotification::class, fn ($job) => $job->notificationId === $record->id);
@@ -416,7 +460,7 @@ class EmailNotificationsTest extends TestCase
     {
         $record = $this->confirmation();
         $record->update(['attempts' => 1]);
-        $record->attemptsHistory()->create(['number' => 1, 'result' => 'processing', 'created_at' => now()]);
+        $record->attemptsHistory()->create(['number' => 1, 'result' => 'processing', 'created_at' => now(new \DateTimeZone('America/Sao_Paulo'))]);
         $this->mock(SmtpGateway::class)->shouldNotReceive('send');
         app(EmailDelivery::class)->send($record->id);
         $this->assertSame('reconciliation_required', $record->fresh()->failure_code);
@@ -428,7 +472,7 @@ class EmailNotificationsTest extends TestCase
         $record = $this->confirmation();
         $record->update([
             'status' => 'failed', 'failure_code' => 'smtp_temporary_rejection', 'attempts' => 5,
-            'first_attempt_at' => now()->subDay(),
+            'first_attempt_at' => now(new \DateTimeZone('America/Sao_Paulo'))->subDay(),
         ]);
         $this->assertTrue(app(RetryEmailNotification::class)->allowed($record->fresh()));
         app(RetryEmailNotification::class)->retry($record->id, $this->admin->id);
@@ -440,7 +484,7 @@ class EmailNotificationsTest extends TestCase
     public function test_expired_and_superseded_messages_never_send(): void
     {
         $record = $this->confirmation();
-        $record->update(['expires_at' => now()->subSecond()]);
+        $record->update(['expires_at' => now(new \DateTimeZone('America/Sao_Paulo'))->subSecond()]);
         app(EmailDelivery::class)->send($record->id);
         $this->assertSame('expired', $record->fresh()->failure_code);
         $admin = Notification::where('audience', 'admin')->firstOrFail();
@@ -508,7 +552,7 @@ class EmailNotificationsTest extends TestCase
     public function test_all_templates_have_html_text_branding_and_correct_local_time(): void
     {
         $record = $this->confirmation();
-        foreach (['booking_confirmation', 'booking_rescheduled', 'booking_cancellation'] as $template) {
+        foreach (['booking_confirmation', 'booking_reminder', 'booking_rescheduled', 'booking_cancellation'] as $template) {
             $record->template = $template;
             $mail = new NotificationEmail($record);
             $this->assertStringContainsString('#d3b04c', $mail->render());
@@ -578,7 +622,7 @@ class EmailNotificationsTest extends TestCase
         app(EmailDelivery::class)->send($record->id);
         $this->assertSame(0, $record->fresh()->attempts);
         config(['notifications.email_enabled' => true]);
-        $record->update(['status' => 'processing', 'attempts' => 5, 'locked_until' => now()->subSecond()]);
+        $record->update(['status' => 'processing', 'attempts' => 5, 'locked_until' => now(new \DateTimeZone('America/Sao_Paulo'))->subSecond()]);
         app(EmailDelivery::class)->send($record->id);
         $this->assertSame('reconciliation_required', $record->fresh()->failure_code);
         $this->assertFalse(app(RetryEmailNotification::class)->allowed($record->fresh()));

@@ -33,8 +33,8 @@ class ProductCrudTest extends TestCase
         return DB::table('products')->insertGetId([
             ...$this->data($attributes),
             'barbershop_id' => $shopId,
-            'created_at' => now(),
-            'updated_at' => now(),
+            'created_at' => now(new \DateTimeZone('America/Sao_Paulo')),
+            'updated_at' => now(new \DateTimeZone('America/Sao_Paulo')),
         ]);
     }
 

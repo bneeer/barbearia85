@@ -19,14 +19,14 @@ Prazo para cancelar: {{ $appointment['deadline'] }} ({{ $appointment['timezone']
 @if($appointment['reason'])
 <p>{{ $appointment['reason'] }}</p>
 @elseif(isset($links[$appointment['id']]))
-<p><a href="{{ $links[$appointment['id']] }}" style="display:inline-block;background:#d3b04c;color:#16120a;padding:14px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Cancelar este agendamento</a></p>
+<p><a href="{{ $links[$appointment['id']] }}" style="display:inline-block;background:#c62828;color:#fff;padding:14px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Cancelar este agendamento</a></p>
 <p style="font-size:12px;word-break:break-all">Se o botão não funcionar: {{ $links[$appointment['id']] }}</p>
 @endif
 @if($appointment['phones'])<p>Contato da unidade: {{ implode(' · ', $appointment['phones']) }}</p>@endif
 </div>
 @endforeach
 @if(isset($links['all']))
-<p><a href="{{ $links['all'] }}" style="display:inline-block;background:#d3b04c;color:#16120a;padding:16px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Cancelar todos os agendamentos</a></p>
+<p><a href="{{ $links['all'] }}" style="display:inline-block;background:#c62828;color:#fff;padding:16px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Cancelar todos os agendamentos</a></p>
 <p style="font-size:12px;word-break:break-all">Se o botão não funcionar: {{ $links['all'] }}</p>
 <p>O cancelamento de todos só será realizado se todos os agendamentos listados ainda forem elegíveis na confirmação.</p>
 @endif

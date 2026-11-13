@@ -79,7 +79,7 @@ class DemoDataSeederTest extends TestCase
             ));
 
             if ($appointment->status === 'completed') {
-                $this->assertTrue($end->lte(now()));
+                $this->assertTrue($end->lte(now(new \DateTimeZone('America/Sao_Paulo'))));
                 $checkout = $appointment->checkout;
                 $this->assertNotNull($checkout);
                 $this->assertSame($admin->id, $checkout->created_by);

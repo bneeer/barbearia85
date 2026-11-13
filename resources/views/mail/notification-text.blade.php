@@ -23,6 +23,10 @@ Valor dos serviços: R$ {{ number_format($details['price'], 2, ',', '.') }}
 @endif
 @endunless
 
+@if($cancellationUrl)
+Se precisar cancelar, acesse este link: {{ $cancellationUrl }}
+@endif
+
 @if($actionUrl)
 {{ $actionLabel }}: {{ $actionUrl }}
 @if($account)

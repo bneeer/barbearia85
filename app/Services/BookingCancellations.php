@@ -38,7 +38,7 @@ class BookingCancellations
         $email = $this->normalizeEmail($email);
         DB::transaction(function () use ($email) {
             $appointments = $this->appointments()->where('status', 'scheduled')
-                ->where('start_time', '>', now())
+                ->where('start_time', '>', now(new \DateTimeZone('America/Sao_Paulo')))
                 ->whereHas('client', fn ($query) => $query->withoutGlobalScope(BarbershopScope::class)
                     ->whereRaw('LOWER(TRIM(email)) = ?', [$email]))
                 ->orderBy('start_time')->orderBy('id')->get();
@@ -58,7 +58,7 @@ class BookingCancellations
                 'token_hash' => hash('sha256', $token),
                 'email' => $email, 'appointments' => $items,
                 'allows_all' => count($items) > 1 && collect($items)->every('eligible'),
-                'expires_at' => now()->addMinutes(config('booking.cancellation_link_minutes')),
+                'expires_at' => now(new \DateTimeZone('America/Sao_Paulo'))->addMinutes(config('booking.cancellation_link_minutes')),
             ]);
             $links = [];
             foreach ($items as $item) {
@@ -82,6 +82,31 @@ class BookingCancellations
         });
     }
 
+    public function reminderLink(Appointment $appointment): ?string
+    {
+        $appointment = $this->appointments()->whereKey($appointment->id)->first();
+        if (! $appointment || $this->reason($appointment)) {
+            return null;
+        }
+
+        $token = bin2hex(random_bytes(32));
+        $grant = BookingCancellationRequest::create([
+            'token_hash' => hash('sha256', $token),
+            'email' => $this->normalizeEmail($appointment->client->email),
+            'appointments' => [[
+                'id' => $appointment->id,
+                'user_id' => $appointment->user_id,
+                'barbershop_id' => $appointment->barbershop_id,
+                'version' => $this->version($appointment),
+                'eligible' => true,
+            ]],
+            'allows_all' => false,
+            'expires_at' => $appointment->start_time,
+        ]);
+
+        return route('booking.cancellation.show', ['token' => $token, 'target' => $appointment->id]);
+    }
+
     public function grant(string $token): ?BookingCancellationRequest
     {
         return BookingCancellationRequest::where('token_hash', hash('sha256', $token))->first();
@@ -89,7 +114,7 @@ class BookingCancellations
 
     public function selection(?BookingCancellationRequest $grant, string $target): ?Collection
     {
-        if (! $grant || $grant->expires_at->lte(now())) {
+        if (! $grant || $grant->expires_at->lte(now(new \DateTimeZone('America/Sao_Paulo')))) {
             return null;
         }
         $items = collect($grant->appointments);
@@ -155,7 +180,7 @@ class BookingCancellations
 
     private function selectionReason(BookingCancellationRequest $grant, Collection $items, Collection $appointments): ?string
     {
-        if ($grant->expires_at->lte(now())) {
+        if ($grant->expires_at->lte(now(new \DateTimeZone('America/Sao_Paulo')))) {
             return 'Link expirado. Solicite um novo e-mail.';
         }
         foreach ($items as $item) {
@@ -196,10 +221,10 @@ class BookingCancellations
         if ($appointment->status !== 'scheduled' || $appointment->checkout || ! $appointment->barbershop) {
             return 'Este agendamento não está disponível para cancelamento.';
         }
-        if ($appointment->start_time->lte(now())) {
+        if ($appointment->start_time->lte(now(new \DateTimeZone('America/Sao_Paulo')))) {
             return 'Este atendimento já começou e não pode ser cancelado pelo autosserviço.';
         }
-        if (now()->gt($appointment->start_time->subHours($appointment->barbershop->cancellation_notice_hours))) {
+        if (now(new \DateTimeZone('America/Sao_Paulo'))->gt($appointment->start_time->subHours($appointment->barbershop->cancellation_notice_hours))) {
             return 'O prazo para cancelamento pelo autosserviço encerrou. Entre em contato com a unidade.';
         }
 

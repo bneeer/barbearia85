@@ -38,7 +38,7 @@ class EmailVerificationTest extends TestCase
 
         $verificationUrl = URL::temporarySignedRoute(
             'verification.verify',
-            now()->addMinutes(60),
+            now(new \DateTimeZone('America/Sao_Paulo'))->addMinutes(60),
             ['id' => $user->id, 'hash' => sha1($user->email)],
         );
 
@@ -57,7 +57,7 @@ class EmailVerificationTest extends TestCase
 
         $verificationUrl = URL::temporarySignedRoute(
             'verification.verify',
-            now()->addMinutes(60),
+            now(new \DateTimeZone('America/Sao_Paulo'))->addMinutes(60),
             ['id' => $user->id, 'hash' => sha1('wrong-email')],
         );
 
@@ -75,7 +75,7 @@ class EmailVerificationTest extends TestCase
 
         $verificationUrl = URL::temporarySignedRoute(
             'verification.verify',
-            now()->addMinutes(60),
+            now(new \DateTimeZone('America/Sao_Paulo'))->addMinutes(60),
             ['id' => 123, 'hash' => sha1($user->email)],
         );
 
@@ -105,7 +105,7 @@ class EmailVerificationTest extends TestCase
 
         $verificationUrl = URL::temporarySignedRoute(
             'verification.verify',
-            now()->addMinutes(60),
+            now(new \DateTimeZone('America/Sao_Paulo'))->addMinutes(60),
             ['id' => $user->id, 'hash' => sha1($user->email)],
         );
 

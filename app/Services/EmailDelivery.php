@@ -40,7 +40,7 @@ class EmailDelivery
                     'locked_until' => null, 'lock_token' => null, 'next_attempt_at' => null,
                 ]);
                 $record->attemptsHistory()->where('result', 'processing')
-                    ->update(['result' => 'interrupted', 'code' => 'worker_interrupted', 'finished_at' => now()]);
+                    ->update(['result' => 'interrupted', 'code' => 'worker_interrupted', 'finished_at' => now(new \DateTimeZone('America/Sao_Paulo'))]);
 
                 return null;
             }
@@ -51,12 +51,12 @@ class EmailDelivery
             }
             $record->update([
                 'status' => 'processing', 'lock_token' => (string) Str::uuid(),
-                'locked_until' => now()->addSeconds(config('notifications.lease_seconds')),
-                'first_attempt_at' => $record->first_attempt_at ?? now(),
+                'locked_until' => now(new \DateTimeZone('America/Sao_Paulo'))->addSeconds(config('notifications.lease_seconds')),
+                'first_attempt_at' => $record->first_attempt_at ?? now(new \DateTimeZone('America/Sao_Paulo')),
                 'attempts' => $record->attempts + 1,
             ]);
             NotificationAttempt::create([
-                'notification_id' => $record->id, 'number' => $record->attempts, 'created_at' => now(),
+                'notification_id' => $record->id, 'number' => $record->attempts, 'created_at' => now(new \DateTimeZone('America/Sao_Paulo')),
             ]);
 
             return $record;
@@ -93,7 +93,7 @@ class EmailDelivery
 
     public function ineligible(Notification $record): ?string
     {
-        if ($record->expires_at?->lte(now())) {
+        if ($record->expires_at?->lte(now(new \DateTimeZone('America/Sao_Paulo')))) {
             return 'expired';
         }
         if ($record->appointment_id) {
@@ -127,12 +127,12 @@ class EmailDelivery
             $updated = Notification::whereKey($record->id)->where('lock_token', $record->lock_token)
                 ->update([
                     'status' => $status, 'provider_id' => $providerId,
-                    'sent_at' => $status === 'sent' ? now() : null, 'failure_code' => null,
+                    'sent_at' => $status === 'sent' ? now(new \DateTimeZone('America/Sao_Paulo')) : null, 'failure_code' => null,
                     'locked_until' => null, 'lock_token' => null, 'next_attempt_at' => null,
                 ]);
             if ($updated) {
                 $record->attemptsHistory()->where('result', 'processing')
-                    ->update(['result' => $status, 'finished_at' => now()]);
+                    ->update(['result' => $status, 'finished_at' => now(new \DateTimeZone('America/Sao_Paulo'))]);
             }
         });
     }
@@ -144,13 +144,13 @@ class EmailDelivery
             $delay = max($failure->retryAfter, config('notifications.backoff')[$record->attempts - 1] ?? 3600);
             $updated = Notification::whereKey($record->id)->where('lock_token', $record->lock_token)->update([
                 'status' => $retry ? 'pending' : 'failed', 'failure_code' => $failure->reason,
-                'next_attempt_at' => $retry ? now()->addSeconds($delay) : null,
+                'next_attempt_at' => $retry ? now(new \DateTimeZone('America/Sao_Paulo'))->addSeconds($delay) : null,
                 'locked_until' => null, 'lock_token' => null,
             ]);
             if ($updated) {
                 $record->attemptsHistory()->where('result', 'processing')->update([
                     'result' => $retry ? 'retry_scheduled' : 'failed',
-                    'code' => $failure->reason, 'finished_at' => now(),
+                    'code' => $failure->reason, 'finished_at' => now(new \DateTimeZone('America/Sao_Paulo')),
                 ]);
                 Log::warning('Email notification delivery failed.', [
                     'notification_id' => $record->id, 'code' => $failure->reason, 'retry' => $retry,
