@@ -61,6 +61,7 @@ class BarbershopController extends Controller
             'phones.*' => ['required', 'string', 'max:64', 'distinct', new InternationalPhone],
             'is_open' => ['required', 'boolean'],
             'cancellation_notice_hours' => ['sometimes', 'required', 'integer', 'min:0', 'max:2147483647'],
+            'no_show_tolerance_minutes' => ['sometimes', 'required', 'integer', 'min:0', 'max:2147483647'],
             'opening_hours' => ['required', 'array:'.implode(',', $dayKeys)],
             'barber_ids' => ['sometimes', 'array'],
             'barber_ids.*' => ['required', 'integer', 'distinct', Rule::exists('users', 'id')->where('role', 'barber')],

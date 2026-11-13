@@ -47,6 +47,8 @@ const form = useForm({
     is_open: props.barbershop?.is_open ?? true,
     cancellation_notice_hours:
         props.barbershop?.cancellation_notice_hours ?? 12,
+    no_show_tolerance_minutes:
+        props.barbershop?.no_show_tolerance_minutes ?? 10,
     opening_hours: props.barbershop?.opening_hours ?? props.defaultHours,
     barber_ids: props.barberIds,
 });
@@ -156,6 +158,26 @@ function removePhoto(photoId: number) {
 
 <template>
     <form class="space-y-5" novalidate @submit.prevent="submit">
+        <div class="space-y-2">
+            <Label for="no-show-tolerance"
+                >Tolerância para não comparecimento (em minutos)</Label
+            >
+            <Input
+                id="no-show-tolerance"
+                v-model="form.no_show_tolerance_minutes"
+                type="number"
+                min="0"
+                max="2147483647"
+                step="1"
+                required
+            />
+            <p class="text-sm text-muted-foreground">
+                Administradores e o barbeiro responsável podem marcar “Não
+                compareceu” a partir deste prazo após o início agendado. Zero
+                permite marcar a partir do início.
+            </p>
+            <InputError :message="form.errors.no_show_tolerance_minutes" />
+        </div>
         <div class="space-y-2">
             <Label for="cancellation-notice"
                 >Antecedência mínima para cancelamento (em horas)</Label

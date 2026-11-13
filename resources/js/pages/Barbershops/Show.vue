@@ -41,6 +41,12 @@ defineOptions({
         <dl class="space-y-3">
             <div>
                 <dt class="text-sm text-muted-foreground">
+                    Tolerância para não comparecimento
+                </dt>
+                <dd>{{ barbershop.no_show_tolerance_minutes }} minutos</dd>
+            </div>
+            <div>
+                <dt class="text-sm text-muted-foreground">
                     Antecedência para cancelamento pelo cliente
                 </dt>
                 <dd>{{ barbershop.cancellation_notice_hours }} horas</dd>

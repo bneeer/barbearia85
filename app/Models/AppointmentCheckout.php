@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class AppointmentCheckout extends Model
 {
     protected $fillable = [
-        'appointment_id', 'created_by', 'services', 'products',
+        'appointment_id', 'cash_register_id', 'created_by', 'services', 'products',
         'services_total_cents', 'products_total_cents', 'discount_cents',
         'total_cents', 'payment_method', 'notes',
     ];
@@ -22,5 +22,10 @@ class AppointmentCheckout extends Model
             'discount_cents' => 'integer',
             'total_cents' => 'integer',
         ];
+    }
+
+    public function cashRegister()
+    {
+        return $this->belongsTo(CashRegister::class);
     }
 }

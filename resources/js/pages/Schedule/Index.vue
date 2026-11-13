@@ -8,6 +8,7 @@ import luxonPlugin from '@fullcalendar/luxon3';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import FullCalendar from '@fullcalendar/vue3';
 import { Head } from '@inertiajs/vue3';
+import { useNow } from '@vueuse/core';
 import {
     CalendarDays,
     ChevronLeft,
@@ -91,6 +92,8 @@ type Details = {
     version?: string;
     checkout?: Checkout | null;
     canCheckout?: boolean;
+    noShowEligibleAt?: string | null;
+    checkoutUnavailableReason?: string | null;
 };
 type Selection = { details: Details; start: string; end: string };
 type CalendarSelection = {
@@ -196,7 +199,15 @@ const checkoutError = ref('');
 const createAppointmentOpen = ref(false);
 const blockOpen = ref(false);
 const confirmOpen = ref(false);
-const confirmAction = ref<'cancel' | 'delete'>('cancel');
+const confirmAction = ref<'cancel' | 'delete' | 'no-show'>('cancel');
+const now = useNow({ interval: 1000 });
+const canMarkNoShow = computed(() => {
+    const details = selected.value?.details;
+
+    return details?.status === 'scheduled' && details.noShowEligibleAt
+        ? now.value.getTime() >= Date.parse(details.noShowEligibleAt)
+        : false;
+});
 const start = ref('');
 const end = ref('');
 const reason = ref('');
@@ -743,7 +754,7 @@ function saveBlock() {
         'Bloqueio salvo.',
     );
 }
-function confirm(action: 'cancel' | 'delete') {
+function confirm(action: 'cancel' | 'delete' | 'no-show') {
     confirmAction.value = action;
     formError.value = '';
     detailsOpen.value = false;
@@ -755,6 +766,17 @@ function executeConfirmed() {
     }
 
     const id = selected.value.details.recordId;
+
+    if (confirmAction.value === 'no-show') {
+        return mutate(
+            `/schedule/appointments/${id}/no-show`,
+            'POST',
+            {
+                version: selected.value.details.version,
+            },
+            'Não comparecimento registrado.',
+        );
+    }
 
     return confirmAction.value === 'cancel'
         ? mutate(
@@ -884,13 +906,17 @@ const options = computed<CalendarOptions>(() => ({
                             ? '#52525b'
                             : event.extendedProps?.status === 'completed'
                               ? '#1e3a8a'
-                              : '#047857',
+                              : event.extendedProps?.status === 'no_show'
+                                ? '#b91c1c'
+                                : '#047857',
                     borderColor:
                         event.extendedProps?.kind === 'block'
                             ? '#52525b'
                             : event.extendedProps?.status === 'completed'
                               ? '#1e3a8a'
-                              : '#047857',
+                              : event.extendedProps?.status === 'no_show'
+                                ? '#b91c1c'
+                                : '#047857',
                     classNames:
                         event.extendedProps?.kind === 'block'
                             ? ['schedule-block']
@@ -1099,6 +1125,10 @@ const options = computed<CalendarOptions>(() => ({
                 <span class="inline-flex items-center gap-1.5"
                     ><span class="size-2.5 rounded-full bg-[#1e3a8a]"></span
                     >Concluído</span
+                >
+                <span class="inline-flex items-center gap-1.5"
+                    ><span class="size-2.5 rounded-full bg-[#b91c1c]"></span>Não
+                    compareceu (No Show)</span
                 >
                 <span class="inline-flex items-center gap-1.5"
                     ><span class="size-2.5 rounded-full bg-zinc-600"></span
@@ -1741,6 +1771,27 @@ const options = computed<CalendarOptions>(() => ({
                             >
                         </div>
                     </form>
+                    <Button
+                        v-if="canMarkNoShow"
+                        type="button"
+                        variant="destructive"
+                        :disabled="busy"
+                        @click="confirm('no-show')"
+                        >NÃO COMPARECEU</Button
+                    >
+                    <p
+                        v-if="selected.details.checkoutUnavailableReason"
+                        role="status"
+                        class="border-t pt-4 text-sm text-muted-foreground"
+                    >
+                        {{ selected.details.checkoutUnavailableReason }}
+                        <a
+                            :href="`/cash-register?barbershop_id=${shop?.id}`"
+                            class="font-medium text-primary underline"
+                        >
+                            Abrir caixa
+                        </a>
+                    </p>
                     <DialogFooter v-if="selected.details.kind === 'block'">
                         <Button
                             variant="destructive"
@@ -2131,12 +2182,16 @@ const options = computed<CalendarOptions>(() => ({
                     <DialogTitle>{{
                         confirmAction === 'cancel'
                             ? 'Cancelar este agendamento?'
-                            : 'Remover este bloqueio?'
+                            : confirmAction === 'no-show'
+                              ? 'Registrar não comparecimento?'
+                              : 'Remover este bloqueio?'
                     }}</DialogTitle>
                     <DialogDescription>{{
                         confirmAction === 'cancel'
                             ? 'A reserva será cancelada e o horário ficará disponível para novos agendamentos.'
-                            : 'O intervalo voltará a aceitar agendamentos em todas as unidades do barbeiro.'
+                            : confirmAction === 'no-show'
+                              ? 'Confirme que o cliente não compareceu. O atendimento será registrado como falta, sem gerar fechamento ou cobrança.'
+                              : 'O intervalo voltará a aceitar agendamentos em todas as unidades do barbeiro.'
                     }}</DialogDescription>
                 </DialogHeader>
                 <p

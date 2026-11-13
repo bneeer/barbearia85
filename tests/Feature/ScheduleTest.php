@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Appointment;
 use App\Models\Barbershop;
 use App\Models\BlockedTime;
+use App\Models\CashRegister;
 use App\Models\Client;
 use App\Models\Notification;
 use App\Models\Product;
@@ -84,12 +85,90 @@ class ScheduleTest extends TestCase
         ]));
     }
 
+    private function noShow(Appointment $appointment, array $overrides = [])
+    {
+        return $this->postJson("/schedule/appointments/$appointment->id/no-show", [
+            'barbershop_id' => $this->shop->id, 'version' => $this->version($appointment), ...$overrides,
+        ]);
+    }
+
+    public function test_no_show_is_available_at_the_exact_unit_tolerance_and_does_not_create_checkout(): void
+    {
+        $appointment = $this->appointment();
+        $this->actingAs($this->admin);
+        $this->events()->assertOk()->assertJsonPath('0.extendedProps.noShowEligibleAt', '2026-11-09T12:10:00+00:00');
+        $this->travelTo(CarbonImmutable::parse('2026-11-09T12:09:59Z'));
+        $this->noShow($appointment)->assertUnprocessable()->assertJsonValidationErrors('status');
+        $this->assertSame('scheduled', $appointment->fresh()->status);
+        $this->travelTo(CarbonImmutable::parse('2026-11-09T12:10:00Z'));
+        $this->noShow($appointment)->assertOk();
+        $this->assertSame('no_show', $appointment->fresh()->status);
+        $this->assertDatabaseCount('appointment_checkouts', 0);
+        $this->assertDatabaseCount('payments', 0);
+        $this->events()->assertOk()->assertJsonPath('0.extendedProps.status', 'no_show')
+            ->assertJsonPath('0.extendedProps.noShowEligibleAt', null)
+            ->assertJsonPath('0.extendedProps.canCheckout', false);
+        $this->noShow($appointment->fresh())->assertUnprocessable();
+    }
+
+    public function test_responsible_barber_can_mark_no_show_but_colleagues_and_other_units_cannot(): void
+    {
+        $appointment = $this->appointment();
+        $this->travelTo(CarbonImmutable::parse('2026-11-09T12:10:00Z'));
+        $this->actingAs($this->colleague);
+        $this->noShow($appointment)->assertForbidden();
+        $this->actingAs($this->barber);
+        $this->events()->assertOk()->assertJsonPath('0.extendedProps.noShowEligibleAt', '2026-11-09T12:10:00+00:00');
+        $this->noShow($appointment, ['barbershop_id' => $this->other->id])->assertForbidden();
+        $this->noShow($appointment)->assertOk();
+        $this->assertSame('no_show', $appointment->fresh()->status);
+    }
+
+    public function test_no_show_uses_current_unit_setting_and_rejects_stale_or_terminal_appointments(): void
+    {
+        $appointment = $this->appointment();
+        $this->actingAs($this->admin);
+        $this->travelTo(CarbonImmutable::parse('2026-11-09T12:10:00Z'));
+        $this->shop->update(['no_show_tolerance_minutes' => 20]);
+        $this->noShow($appointment)->assertUnprocessable();
+        $this->travelTo(CarbonImmutable::parse('2026-11-09T12:20:00Z'));
+        $version = $this->version($appointment);
+        $appointment->update(['start_time' => $appointment->start_time->copy()->addMinutes(40)]);
+        $this->noShow($appointment->fresh(), ['version' => $version])->assertConflict();
+        foreach (['cancelled', 'completed', 'no_show'] as $status) {
+            $appointment->update(['status' => $status]);
+            $this->noShow($appointment->fresh())->assertUnprocessable();
+        }
+        $this->noShow($appointment->fresh(), ['barbershop_id' => $this->other->id])->assertNotFound();
+    }
+
+    public function test_zero_tolerance_allows_no_show_at_start_even_in_another_timezone(): void
+    {
+        $this->shop->update(['no_show_tolerance_minutes' => 0, 'timezone' => 'America/Los_Angeles']);
+        $appointment = $this->appointment();
+        $this->actingAs($this->admin);
+        $this->travelTo(CarbonImmutable::instance($appointment->start_time)->subSecond());
+        $this->noShow($appointment)->assertUnprocessable();
+        $this->travelTo(CarbonImmutable::instance($appointment->start_time));
+        $this->noShow($appointment)->assertOk();
+    }
+
     private function version(Appointment $appointment): string
     {
         return hash('sha256', implode('|', [
             $appointment->start_time->toIso8601String(), $appointment->end_time->toIso8601String(),
             $appointment->status, $appointment->updated_at->toIso8601String(),
         ]));
+    }
+
+    private function openCashRegister(Barbershop $shop): CashRegister
+    {
+        return CashRegister::create([
+            'barbershop_id' => $shop->id,
+            'opened_by' => $this->admin->id,
+            'opening_amount_cents' => 10000,
+            'opened_at' => now(),
+        ]);
     }
 
     private function update(Appointment $appointment, array $overrides = [])
@@ -523,6 +602,7 @@ class ScheduleTest extends TestCase
     public function test_checkout_records_historical_values_and_locks_the_appointment(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-11-09 10:00', 'America/Sao_Paulo')->utc());
+        $cashRegister = $this->openCashRegister($this->shop);
         $appointment = $this->appointment();
         $secondService = Service::create([
             'barbershop_id' => $this->shop->id, 'name' => 'Barba', 'description' => 'Barba',
@@ -551,6 +631,7 @@ class ScheduleTest extends TestCase
         $this->actingAs($this->admin)->postJson('/schedule/appointments/'.$appointment->id.'/checkout', $payload)->assertOk();
         $this->assertDatabaseHas('appointment_checkouts', [
             'appointment_id' => $appointment->id, 'created_by' => $this->admin->id,
+            'cash_register_id' => $cashRegister->id,
             'services_total_cents' => 6235, 'products_total_cents' => 2010,
             'discount_cents' => 105, 'total_cents' => 8140, 'payment_method' => 'credit_card',
             'notes' => $payload['notes'],
@@ -586,9 +667,45 @@ class ScheduleTest extends TestCase
             ->assertJsonPath('0.extendedProps.services.1.price', '12.35');
     }
 
+    public function test_checkout_requires_an_open_cash_register_and_links_the_sale_to_it(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-09 10:00', 'America/Sao_Paulo')->utc());
+        $appointment = $this->appointment();
+        $this->actingAs($this->admin);
+        $payload = [
+            'barbershop_id' => $this->shop->id,
+            'version' => $this->version($appointment),
+            'services_total_cents' => 5000,
+            'services' => [['id' => $this->service->id, 'price_cents' => 5000]],
+            'products' => [],
+            'discount_cents' => 0,
+            'payment_method' => 'cash',
+        ];
+        $url = '/schedule/appointments/'.$appointment->id.'/checkout';
+
+        $this->events()->assertOk()
+            ->assertJsonPath('0.extendedProps.canCheckout', false)
+            ->assertJsonPath(
+                '0.extendedProps.checkoutUnavailableReason',
+                'Abra o caixa desta unidade para finalizar atendimentos.'
+            );
+        $this->postJson($url, $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors('cash_register');
+        $this->assertDatabaseCount('appointment_checkouts', 0);
+
+        $register = $this->openCashRegister($this->shop);
+        $this->events()->assertOk()->assertJsonPath('0.extendedProps.canCheckout', true);
+        $this->postJson($url, $payload)->assertOk();
+        $this->assertDatabaseHas('appointment_checkouts', [
+            'appointment_id' => $appointment->id,
+            'cash_register_id' => $register->id,
+        ]);
+    }
+
     public function test_checkout_validates_authorization_prices_discounts_and_product_unit(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-11-09 10:00', 'America/Sao_Paulo')->utc());
+        $this->openCashRegister($this->shop);
         $appointment = $this->appointment();
         $product = Product::create([
             'barbershop_id' => $this->shop->id, 'name' => 'Pomada', 'brand' => 'Marca',
@@ -637,6 +754,7 @@ class ScheduleTest extends TestCase
     public function test_checkout_accepts_all_payment_methods_and_rejects_non_pending_appointments(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-11-09 10:00', 'America/Sao_Paulo')->utc());
+        $this->openCashRegister($this->shop);
         $this->actingAs($this->admin);
         foreach (['credit_card', 'debit_card', 'pix', 'cash'] as $method) {
             $appointment = $this->appointment();
@@ -666,6 +784,7 @@ class ScheduleTest extends TestCase
 
     public function test_checkout_is_forbidden_until_the_exact_appointment_start_time(): void
     {
+        $this->openCashRegister($this->shop);
         $appointment = $this->appointment();
         $this->actingAs($this->admin);
         $payload = [

@@ -20,6 +20,7 @@ class Barbershop extends Model
         'opening_hours',
         'is_open',
         'cancellation_notice_hours',
+        'no_show_tolerance_minutes',
     ];
 
     protected function casts(): array
@@ -29,6 +30,7 @@ class Barbershop extends Model
             'phones' => 'array',
             'is_open' => 'boolean',
             'cancellation_notice_hours' => 'integer',
+            'no_show_tolerance_minutes' => 'integer',
         ];
     }
 
@@ -60,6 +62,11 @@ class Barbershop extends Model
     public function appointments()
     {
         return $this->hasMany(Appointment::class);
+    }
+
+    public function cashRegisters()
+    {
+        return $this->hasMany(CashRegister::class);
     }
 
     public function photos()

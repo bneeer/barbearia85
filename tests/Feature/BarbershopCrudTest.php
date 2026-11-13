@@ -64,6 +64,7 @@ class BarbershopCrudTest extends TestCase
         $barbershop = Barbershop::where('name', 'Barbearia Central')->firstOrFail();
         $this->assertSame('01310100', $barbershop->zip_code);
         $this->assertSame(12, $barbershop->cancellation_notice_hours);
+        $this->assertSame(10, $barbershop->no_show_tolerance_minutes);
         $this->assertFalse($barbershop->is_open);
         $this->assertSame(['+5511999999999', '+551133334444'], $barbershop->phones);
         $this->assertDatabaseHas('barbershop_user', [
@@ -81,12 +82,14 @@ class BarbershopCrudTest extends TestCase
             'name' => 'Barbearia Centro',
             'barber_ids' => [],
             'cancellation_notice_hours' => 2,
+            'no_show_tolerance_minutes' => 20,
         ]))->assertSessionHasNoErrors()->assertRedirect('/barbershops');
         $this->assertDatabaseHas('barbershops', [
             'id' => $barbershop->id,
             'name' => 'Barbearia Centro',
             'is_open' => true,
             'cancellation_notice_hours' => 2,
+            'no_show_tolerance_minutes' => 20,
         ]);
         $this->assertDatabaseMissing('barbershop_user', [
             'barbershop_id' => $barbershop->id,
@@ -105,9 +108,30 @@ class BarbershopCrudTest extends TestCase
             $this->put("/barbershops/$shop->id", $this->data(['cancellation_notice_hours' => $value]))
                 ->assertSessionHasErrors('cancellation_notice_hours');
         }
+
         $this->put("/barbershops/$shop->id", $this->data(['cancellation_notice_hours' => 0]))
             ->assertSessionHasNoErrors();
         $this->assertSame(0, $shop->fresh()->cancellation_notice_hours);
+    }
+
+    public function test_no_show_tolerance_is_admin_only_and_accepts_non_negative_integer_minutes(): void
+    {
+        $shop = $this->barbershop('Centro');
+        $other = $this->barbershop('Outra');
+        $barber = User::factory()->create(['role' => 'barber', 'barbershop_id' => $shop->id]);
+        $this->actingAs($barber)->put("/barbershops/$shop->id", $this->data(['no_show_tolerance_minutes' => 0]))
+            ->assertForbidden();
+        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        foreach ([-1, 1.5, 'abc', null, 2147483648] as $value) {
+            $this->put("/barbershops/$shop->id", $this->data(['no_show_tolerance_minutes' => $value]))
+                ->assertSessionHasErrors('no_show_tolerance_minutes');
+        }
+        $this->put("/barbershops/$shop->id", $this->data(['no_show_tolerance_minutes' => 0]))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(0, $shop->fresh()->no_show_tolerance_minutes);
+        $this->assertSame(10, $other->fresh()->no_show_tolerance_minutes);
+        $this->get("/barbershops/$shop->id/edit")->assertInertia(fn (Assert $page) => $page
+            ->where('barbershop.no_show_tolerance_minutes', 0));
     }
 
     public function test_barber_crud_keeps_unit_assignments_in_sync(): void

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Appointment;
 use App\Models\Barbershop;
 use App\Models\BlockedTime;
+use App\Models\CashRegister;
 use App\Models\Client;
 use App\Models\Product;
 use App\Models\Scopes\BarbershopScope;
@@ -203,6 +204,8 @@ class ScheduleController extends Controller
         }
         $barberIds = $shop->users()->where('role', 'barber')
             ->when($barberId !== null, fn ($query) => $query->whereKey($barberId))->pluck('users.id');
+        $cashRegisterOpen = CashRegister::query()->where('barbershop_id', $shop->id)
+            ->whereNull('closed_at')->exists();
         $appointments = Appointment::withoutGlobalScope(BarbershopScope::class)
             ->where('barbershop_id', $shop->id)
             ->when($barberId !== null, fn ($query) => $query->where('user_id', $barberId))
@@ -239,9 +242,20 @@ class ScheduleController extends Controller
                             'discount_cents', 'total_cents', 'payment_method', 'notes',
                         ]) : null,
                     'status' => $appointment->status, 'notes' => $appointment->notes,
+                    'noShowEligibleAt' => $appointment->status === 'scheduled'
+                        && ($request->user()->isAdmin() || $appointment->user_id === $request->user()->id)
+                            ? $appointment->start_time->copy()->addMinutes($shop->no_show_tolerance_minutes)->toIso8601String()
+                            : null,
                     'canCheckout' => $request->user()->isAdmin()
                         && $appointment->status === 'scheduled'
-                        && $appointment->start_time->lte(CarbonImmutable::now()),
+                        && $appointment->start_time->lte(CarbonImmutable::now())
+                        && $cashRegisterOpen,
+                    'checkoutUnavailableReason' => $request->user()->isAdmin()
+                        && $appointment->status === 'scheduled'
+                        && $appointment->start_time->lte(CarbonImmutable::now())
+                        && ! $cashRegisterOpen
+                            ? 'Abra o caixa desta unidade para finalizar atendimentos.'
+                            : null,
                     'version' => $this->appointmentVersion($appointment),
                 ],
             ]);
@@ -261,6 +275,34 @@ class ScheduleController extends Controller
             ]);
 
         return response()->json($appointments->concat($blocks)->values());
+    }
+
+    public function noShow(Request $request, int $id)
+    {
+        $shop = $this->shop($request);
+        $data = $request->validate(['version' => ['required', 'string', 'size:64']]);
+        $appointment = Appointment::withoutGlobalScope(BarbershopScope::class)
+            ->where('barbershop_id', $shop->id)->findOrFail($id);
+        abort_unless($request->user()->isAdmin() || $appointment->user_id === $request->user()->id, 403);
+
+        DB::transaction(function () use ($appointment, $shop, $data) {
+            User::whereKey($appointment->user_id)->lockForUpdate()->firstOrFail();
+            $appointment->refresh();
+            $shop->refresh();
+            abort_unless(hash_equals($this->appointmentVersion($appointment), $data['version']), 409, 'O agendamento foi alterado. Atualize o calendário.');
+            if ($appointment->status !== 'scheduled' || $appointment->checkout()->exists()) {
+                throw ValidationException::withMessages(['status' => 'Somente agendamentos pendentes podem ser marcados como não comparecimento.']);
+            }
+            $eligibleAt = $appointment->start_time->copy()->addMinutes($shop->no_show_tolerance_minutes);
+            if (CarbonImmutable::now()->lt($eligibleAt)) {
+                throw ValidationException::withMessages([
+                    'status' => "Aguarde a tolerância de {$shop->no_show_tolerance_minutes} minutos após o início agendado para marcar não comparecimento.",
+                ]);
+            }
+            $appointment->update(['status' => 'no_show']);
+        }, 3);
+
+        return response()->json(['message' => 'Não comparecimento registrado.']);
     }
 
     private function cents(string $amount): int
@@ -300,6 +342,14 @@ class ScheduleController extends Controller
             }
             if ($appointment->start_time->gt(CarbonImmutable::now())) {
                 throw ValidationException::withMessages(['start_time' => 'Não é possível finalizar um atendimento antes do horário de início do agendamento.']);
+            }
+            $cashRegister = CashRegister::query()
+                ->where('barbershop_id', $shop->id)->whereNull('closed_at')
+                ->lockForUpdate()->first();
+            if (! $cashRegister) {
+                throw ValidationException::withMessages([
+                    'cash_register' => 'Abra o caixa desta unidade para finalizar atendimentos.',
+                ]);
             }
             $services = $appointment->services()->withoutGlobalScope(BarbershopScope::class)->lockForUpdate()->get();
             if ($services->isEmpty()) {
@@ -342,6 +392,7 @@ class ScheduleController extends Controller
                 throw ValidationException::withMessages(['discount_cents' => 'O desconto não pode superar o subtotal.']);
             }
             $checkout = $appointment->checkout()->create([
+                'cash_register_id' => $cashRegister->id,
                 'created_by' => $request->user()->id,
                 'services' => $serviceItems->all(), 'products' => $productItems->all(),
                 'services_total_cents' => $servicesTotal, 'products_total_cents' => $productsTotal,

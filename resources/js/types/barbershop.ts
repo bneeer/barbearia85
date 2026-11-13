@@ -38,6 +38,7 @@ export type Barbershop = {
     opening_hours: OpeningHours | null;
     is_open: boolean;
     cancellation_notice_hours: number;
+    no_show_tolerance_minutes: number;
     users_count?: number;
     users?: BarbershopBarber[];
     photos?: BarbershopPhoto[];

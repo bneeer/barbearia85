@@ -4,6 +4,7 @@ use App\Http\Controllers\BarberController;
 use App\Http\Controllers\BarbershopController;
 use App\Http\Controllers\BookingCancellationController;
 use App\Http\Controllers\BookingController;
+use App\Http\Controllers\CashRegisterController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InventoryController;
@@ -79,6 +80,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('schedule/events', [ScheduleController::class, 'events'])->name('schedule.events');
     Route::post('schedule/appointments', [ScheduleController::class, 'storeAppointment'])->name('schedule.appointments.store');
     Route::post('schedule/appointments/{id}/checkout', [ScheduleController::class, 'checkout'])->name('schedule.appointments.checkout');
+    Route::post('schedule/appointments/{id}/no-show', [ScheduleController::class, 'noShow'])->name('schedule.appointments.no-show');
+    Route::get('cash-register', [CashRegisterController::class, 'index'])->name('cash-register.index');
+    Route::post('cash-register', [CashRegisterController::class, 'open'])->name('cash-register.open');
+    Route::post('cash-register/{id}/withdrawals', [CashRegisterController::class, 'withdraw'])
+        ->whereNumber('id')->name('cash-register.withdrawals.store');
+    Route::post('cash-register/{id}/close', [CashRegisterController::class, 'close'])
+        ->whereNumber('id')->name('cash-register.close');
     Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
     Route::post('inventory/supplies', [InventoryController::class, 'storeSupply'])->name('inventory.supplies.store');
     Route::put('inventory/supplies/{id}', [InventoryController::class, 'updateSupply'])

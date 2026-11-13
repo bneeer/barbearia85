@@ -5,6 +5,7 @@ import {
     CalendarDays,
     ClipboardList,
     Boxes,
+    CircleDollarSign,
     Mail,
     Package,
     Users,
@@ -37,6 +38,12 @@ const mainNavItems: NavItem[] = [
         title: 'Agendamentos',
         href: '/schedule',
         icon: CalendarDays,
+    },
+    {
+        title: 'Caixa',
+        href: '/cash-register',
+        icon: CircleDollarSign,
+        requiresAdmin: true,
     },
     {
         title: 'Barbeiros',

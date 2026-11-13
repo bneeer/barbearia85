@@ -4,6 +4,8 @@ Aplicação web para apresentar a Barbearia 85 e permitir que clientes agendem s
 
 ## Recursos
 
+- Nos detalhes da agenda, administradores e o barbeiro responsável podem registrar “Não compareceu” somente para reservas agendadas, a partir do início mais a tolerância da unidade. A tolerância é configurada no gerenciamento das unidades em minutos, com padrão de 10; zero libera a ação no início. O prazo é validado também no servidor. A falta não gera fechamento, cobrança ou notificação de reagendamento.
+
 - Política de Privacidade pública em `/politica-de-privacidade`, vinculada nas páginas públicas exceto a inicial. O texto é um modelo em revisão; o [inventário interno de dados](docs/inventario-dados-pessoais.md) registra pontos que devem ser confirmados pelos responsáveis, com apoio jurídico e contábil quando necessário, antes da publicação definitiva.
 - Administradores consultam cadastros e histórico de todas as unidades em `/clients` e acompanham protocolos em `/privacy-requests`. A prévia de exclusão não apaga dados; retenção indefinida impede registrar exclusão integral. O [procedimento interno de solicitações](docs/procedimento-solicitacoes-lgpd.md), o canal público e as regras de retenção precisam ser validados pelos responsáveis com assessoria jurídica.
 - Página inicial pública com apresentação da barbearia e galeria de fotos.
