@@ -43,6 +43,24 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinute(1)->by('cancellation-email:'.hash('sha256', $email))->response($response),
             ];
         });
+        RateLimiter::for('client-portal-request', function (Request $request) {
+            $email = $request->input('email');
+            $email = is_string($email) ? mb_strtolower(trim($email)) : '';
+            $response = fn (Request $request, array $headers) => redirect()->route('home')
+                ->withErrors(['email' => 'Aguarde um minuto antes de solicitar outro e-mail.'])
+                ->withHeaders($headers);
+
+            return [
+                Limit::perMinute(5)->by('portal-ip:'.$request->ip())->response($response),
+                Limit::perMinute(1)->by('portal-email:'.hash('sha256', $email))->response($response),
+            ];
+        });
+        RateLimiter::for('client-portal-link', fn (Request $request) => Limit::perMinute(60)
+            ->by('portal-link-ip:'.$request->ip())
+            ->response(fn (Request $request, array $headers) => response('Muitas solicitações. Tente novamente mais tarde.', 429, [
+                ...$headers, 'Cache-Control' => 'no-store, private',
+                'Referrer-Policy' => 'no-referrer', 'X-Robots-Tag' => 'noindex, nofollow',
+            ])));
         app(ChannelManager::class)->extend('mail',
             fn ($app) => $app->make(AccountEmailChannel::class));
 

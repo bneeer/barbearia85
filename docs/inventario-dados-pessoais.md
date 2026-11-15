@@ -26,16 +26,28 @@ Para cada tratamento, confirmar controlador e operadores, titulares, necessidade
 
 ### Fechamentos e dados financeiros
 
-- **Dados e finalidade:** serviços e produtos, valores, descontos, forma de pagamento, observações e vínculo com o atendimento para gestão e obrigações aplicáveis. Há também esquema para pagamentos; confirmar uso efetivo. O fechamento não processa nem confirma recebimento.
-- **Acesso:** administradores autorizados; confirmar acesso da contabilidade, operação e fornecedores. Informações financeiras do dashboard e da agenda não são disponibilizadas ao perfil de barbeiro.
+- **Dados e finalidade:** serviços e produtos, valores, descontos, forma de pagamento, observações e vínculo com o atendimento para gestão e obrigações aplicáveis. A gestão financeira também registra despesas, vencimentos, pagamentos parciais, custos médios de estoque, composições de insumos, comissão por serviço e salário-base mensal por vínculo profissional-unidade. Há também esquema para pagamentos; confirmar uso efetivo. O fechamento não processa nem confirma recebimento.
+- **Acesso:** administradores autorizados veem despesas, custos, salários e lucro estimado. Cada barbeiro pode consultar somente as próprias comissões; não recebe despesas, salário-base, custos ou lucro da unidade. Confirmar acesso da contabilidade, operação e fornecedores.
 - **Base legal a avaliar:** execução de contrato, obrigação legal ou regulatória e eventual exercício regular de direitos, conforme cada finalidade e documento.
 - **Retenção:** definir prazos e exceções com apoio contábil e jurídico.
 - **Compartilhamento e local:** identificar hospedagem, banco, contabilidade, fornecedores e regiões; verificar exportações XLSX e seus destinatários.
 - **Exclusão:** definir procedimentos para banco, exportações e cópias após avaliação das obrigações de retenção; o fechamento tem chaves estrangeiras com restrição de exclusão.
 
+Os relatórios operacionais distinguem competência de quitação e podem estar incompletos para registros antigos sem snapshots de custo/comissão. Não são escrituração fiscal nem confirmação de processamento bancário.
+
+### Programa de fidelidade
+
+- **Dados e finalidade:** identificador HMAC derivado do e-mail do cliente, saldo e movimentações de carimbos, unidade, atendimento/fechamento associado e descrição da recompensa resgatada, para administrar os benefícios por unidade. O identificador derivado é pseudonimizado, não anônimo.
+- **Acesso:** administradores da barbearia e clientes com acesso válido ao portal; confirmar acessos operacionais e dos fornecedores.
+- **Base legal a avaliar:** execução de contrato ou outra hipótese adequada à participação no programa, a ser validada pelos responsáveis.
+- **Retenção:** definir prazo para saldos e histórico de movimentações, inclusive após desativação do programa ou encerramento da relação com o cliente.
+- **Compartilhamento e local:** os dados são armazenados no banco da aplicação; identificar hospedagem, banco, operadores, regiões e eventuais transferências.
+- **Exclusão:** não há expurgo automático do identificador HMAC ou das movimentações. Definir tratamento em pedidos de privacidade, exclusão de clientes, fechamento de unidades, exportações e backups.
+
 ### Notificações, logs e filas
 
 - **Dados e finalidade:** destinatário, situação, tentativas, códigos de falha e conteúdo de notificações para comunicação e acompanhamento de envios; logs e filas podem conter dados técnicos ou relacionados a falhas. Conteúdo e segredos específicos da outbox são criptografados, mas isso não significa que todos os seus campos ou logs sejam criptografados.
+- **Consulta do cliente:** concessões de acesso armazenam e-mail criptografado, identificador derivado do e-mail, hash de token, expiração e vínculo com a notificação. O link dá acesso a todos os cadastros ativos associados ao endereço por até uma hora. Configurar servidor e observabilidade para não registrar URLs com o token; definir retenção e exclusão desses registros e da outbox.
 - **Acesso:** administradores responsáveis pela operação e pessoas autorizadas com acesso à infraestrutura; identificar acesso de fornecedores.
 - **Base legal a avaliar:** execução de contrato para comunicações pertinentes e outras hipóteses aplicáveis à operação e segurança, conforme finalidade.
 - **Retenção:** definir prazo específico para registros e conteúdo, preferencialmente menor para conteúdo sensível; definir prazos para logs e filas. Não presumir expurgo automático.

@@ -6,13 +6,16 @@ use App\Http\Controllers\BookingCancellationController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\CashRegisterController;
 use App\Http\Controllers\ClientController;
+use App\Http\Controllers\ClientPortalController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PrivacyRequestController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\ServiceController;
+use App\Http\Middleware\ProtectClientPortalResponse;
 use App\Models\Barbershop;
 use App\Models\BarbershopPhoto;
 use App\Models\User;
@@ -26,6 +29,10 @@ Route::get('/', fn () => Inertia::render('Welcome', [
 ]))->name('home');
 
 Route::get('agendar', [BookingController::class, 'index'])->name('booking');
+Route::post('area-do-cliente', [ClientPortalController::class, 'store'])
+    ->middleware('throttle:client-portal-request')->name('client-portal.request');
+Route::get('area-do-cliente/{token}', [ClientPortalController::class, 'show'])
+    ->where('token', '[a-f0-9]{64}')->middleware([ProtectClientPortalResponse::class, 'throttle:client-portal-link'])->name('client-portal.show');
 Route::get('politica-de-privacidade', fn () => Inertia::render('PrivacyPolicy', [
     'barbershops' => Barbershop::query()->where('is_open', true)->orderBy('name')
         ->get(['name', 'phones'])->map(fn (Barbershop $shop) => [
@@ -60,6 +67,8 @@ Route::get('api/barbershops/{barbershop:slug}/gallery', [BarbershopController::c
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('clients', [ClientController::class, 'index'])->name('clients.index');
     Route::get('clients/{id}', [ClientController::class, 'show'])->whereNumber('id')->name('clients.show');
+    Route::post('clients/{id}/loyalty/redeem', [ClientController::class, 'redeemLoyalty'])
+        ->whereNumber('id')->middleware('throttle:30,1')->name('clients.loyalty.redeem');
     Route::get('privacy-requests', [PrivacyRequestController::class, 'index'])->name('privacy-requests.index');
     Route::get('privacy-requests/create', [PrivacyRequestController::class, 'create'])->name('privacy-requests.create');
     Route::post('privacy-requests', [PrivacyRequestController::class, 'store'])->name('privacy-requests.store');
@@ -76,6 +85,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('dashboard/scheduled', [DashboardController::class, 'scheduled'])->name('dashboard.scheduled');
     Route::get('dashboard/export', [DashboardController::class, 'export'])->name('dashboard.export');
+    Route::get('finance', [FinanceController::class, 'index'])->name('finance.index');
+    Route::post('finance/expenses', [FinanceController::class, 'storeExpense'])->name('finance.expenses.store');
+    Route::post('finance/recurrences', [FinanceController::class, 'storeRecurrence'])->name('finance.recurrences.store');
+    Route::patch('finance/recurrences/{id}', [FinanceController::class, 'toggleRecurrence'])
+        ->whereNumber('id')->name('finance.recurrences.update');
+    Route::post('finance/expenses/{id}/payments', [FinanceController::class, 'payExpense'])
+        ->whereNumber('id')->name('finance.expenses.payments.store');
     Route::get('schedule', [ScheduleController::class, 'index'])->name('schedule.index');
     Route::get('schedule/events', [ScheduleController::class, 'events'])->name('schedule.events');
     Route::post('schedule/appointments', [ScheduleController::class, 'storeAppointment'])->name('schedule.appointments.store');

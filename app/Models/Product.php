@@ -18,6 +18,7 @@ class Product extends Model
         'price',
         'stock_quantity',
         'min_stock',
+        'average_cost_milli_cents',
     ];
 
     protected function casts(): array
@@ -26,6 +27,7 @@ class Product extends Model
             'price' => 'decimal:2',
             'stock_quantity' => 'integer',
             'min_stock' => 'integer',
+            'average_cost_milli_cents' => 'integer',
         ];
     }
 

@@ -8,6 +8,7 @@ Aplicação web para apresentar a Barbearia 85 e permitir que clientes agendem s
 
 - Política de Privacidade pública em `/politica-de-privacidade`, vinculada nas páginas públicas exceto a inicial. O texto é um modelo em revisão; o [inventário interno de dados](docs/inventario-dados-pessoais.md) registra pontos que devem ser confirmados pelos responsáveis, com apoio jurídico e contábil quando necessário, antes da publicação definitiva.
 - Administradores consultam cadastros e histórico de todas as unidades em `/clients` e acompanham protocolos em `/privacy-requests`. A prévia de exclusão não apaga dados; retenção indefinida impede registrar exclusão integral. O [procedimento interno de solicitações](docs/procedimento-solicitacoes-lgpd.md), o canal público e as regras de retenção precisam ser validados pelos responsáveis com assessoria jurídica.
+- Programa de fidelidade configurável por unidade: administradores habilitam ou pausam a participação, definem quantos atendimentos pagos liberam uma recompensa e registram o resgate no cadastro do cliente. Cada checkout pago após a ativação gera um carimbo; saldos não são compartilhados entre unidades.
 - Página inicial pública com apresentação da barbearia e galeria de fotos.
 - Agendamento público com escolha de unidade e um ou mais serviços. Cada serviço tem seu próprio barbeiro e data/horário, inclusive em dias diferentes, sem exigir um profissional que realize todos os serviços. A opção sem preferência consulta os profissionais habilitados para cada serviço.
 - Consulta de horários considerando a duração individual do serviço, expediente, horários de trabalho dos barbeiros, bloqueios e agendamentos existentes, inclusive em outras unidades. Os serviços do mesmo pedido não podem se sobrepor para o cliente; horários consecutivos são permitidos.
@@ -24,7 +25,9 @@ Aplicação web para apresentar a Barbearia 85 e permitir que clientes agendem s
 - No XLSX, totais de serviços/produtos, descontos e total do fechamento são células numéricas em reais, com formato monetário brasileiro (`R$`) e duas casas decimais. Zero é exportado como valor zero; registros sem fechamento ficam com essas células vazias. Textos de clientes e observações continuam explicitamente como texto, sem executar fórmulas.
 - Administradores consultam todas as unidades. Barbeiros consultam somente atendimentos atribuídos ao próprio usuário em todas as unidades às quais têm acesso; dados de colegas, fotos de colegas e valores financeiros não são consultados ou enviados. Outros perfis mantêm a página de boas-vindas.
 - Seção de Produtos (`/products`) para administradores cadastrarem, consultarem, editarem e excluírem produtos da própria unidade, com nome, marca, descrição e preço em reais. Inclui busca por nome ou marca e listagem paginada.
-- Gestão de Estoque (`/inventory`) para administrar produtos comercializáveis e insumos em cadastros separados, consultar itens abaixo do mínimo e registrar entradas, saídas e ajustes com histórico e motivo. Saldos de produtos existentes iniciam em zero e devem ser informados por movimentação; a venda limita a quantidade disponível e debita o saldo no fechamento. Insumos usam unidades `un`, `ml`, `g`, `L` ou `kg` e são movimentados manualmente.
+- Gestão de Estoque (`/inventory`) para administrar produtos comercializáveis e insumos em cadastros separados, consultar itens abaixo do mínimo e registrar entradas, saídas e ajustes com histórico e motivo. Entradas informam o custo total da compra e atualizam o custo médio ponderado; custos de venda/consumo são preservados nos fechamentos. Produtos usam unidades inteiras; insumos usam `un`, `ml`, `g`, `L` ou `kg`.
+- Gestão Financeira (`/finance`) com despesas avulsas e recorrentes, contas a pagar, vencimentos e pagamentos parciais. O relatório separa lucro estimado por competência do fluxo de pagamentos. Comissões usam o percentual configurado no serviço e o valor líquido após rateio proporcional do desconto; salário-base é mensal por barbeiro/unidade e proporcional ao intervalo consultado. Administradores veem os valores financeiros; barbeiros consultam somente as próprias comissões.
+- Serviços podem ter composição de insumos. O checkout sugere as quantidades e só baixa o estoque após confirmação; falta de saldo gera aviso e não impede finalizar o atendimento. Custos médios ausentes em registros antigos são sinalizados como dados incompletos, sem presumir custo zero.
 - Dashboard administrativo também apresenta saldos atuais de itens para reposição e zerados, além de vendas, entradas, saídas manuais, ajustes e produtos mais vendidos no período e unidade selecionados. O retrato de estoque não muda ao navegar em datas passadas; movimentações e vendas são filtradas pelo período. Quantidades de insumos em unidades distintas não são somadas; o preço de venda não é tratado como custo do estoque.
 - Calendário de agendamentos (`/schedule`) com seleção de unidades, filtro por barbeiro, visualizações de mês/semana/dia/lista e detalhes em dialog.
 - Administradores consultam todas as unidades e podem cancelar ou reagendar reservas por arraste; barbeiros consultam somente suas reservas nas unidades associadas.
@@ -183,3 +186,30 @@ Para executar as verificações de lint, formatação, tipos e testes configurad
 ```bash
 composer run ci:check
 ```
+# Área do cliente
+
+Na página inicial, o cliente pode solicitar por e-mail um link de consulta de
+agendamentos válido por uma hora. O acesso reúne cadastros ativos com o mesmo
+endereço em todas as unidades; quem tiver acesso ao link pode visualizar esses
+dados. Enquanto houver link ativo, novas solicitações não geram outro envio.
+Se o envio falhar definitivamente, uma nova solicitação poderá substituir o link;
+resultados incertos permanecem bloqueados até a expiração.
+Se um envio ainda estiver em processamento ao expirar, a substituição aguarda o
+encerramento ou a recuperação desse envio para evitar uma disputa entre trabalhos.
+
+O recurso depende de `NOTIFICATIONS_EMAIL_ENABLED`, configuração de SMTP, fila
+`notifications` e scheduler em funcionamento. Um envio aceito para processamento
+não garante entrega: falhas são acompanhadas na área de notificações. Links de
+consulta não aceitam reprocessamento manual para evitar envio de link substituído.
+Com `MAIL_MAILER=log` ou `array`, a consulta informa indisponibilidade, pois esses
+modos apenas simulam o envio.
+Configure o servidor web, proxy e serviços de observabilidade para não registrar
+URLs completas de `/area-do-cliente/{token}`, pois o link é uma credencial. A
+concessão guarda o e-mail criptografado e um identificador derivado do endereço;
+seus registros e a outbox não são apagados automaticamente e devem ser incluídos
+nas políticas de retenção e nas solicitações de privacidade.
+
+O portal também apresenta o progresso do programa de fidelidade por unidade.
+Atendimentos pagos finalizados após a ativação geram carimbos; a quantidade para
+liberar a recompensa e sua descrição são definidas pela administração da unidade.
+O resgate é registrado manualmente pela equipe no cadastro do cliente.

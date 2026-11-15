@@ -14,6 +14,7 @@ createInertiaApp({
             case name === 'Welcome':
             case name === 'Booking':
             case name === 'BookingCancellation':
+            case name === 'ClientPortal':
             case name === 'PrivacyPolicy':
                 return null;
             case name.startsWith('auth/'):

@@ -69,7 +69,7 @@ class InventoryTest extends TestCase
 
         $this->from('/inventory')->post('/inventory/movements', [
             'item_type' => 'supply', 'item_id' => $supply->id, 'type' => 'entry',
-            'quantity' => '500.125', 'reason' => 'Compra inicial',
+            'quantity' => '500.125', 'total_cost' => '50.00', 'reason' => 'Compra inicial',
         ])->assertRedirect('/inventory');
         $supply->refresh();
         $this->assertSame('500.125', $supply->stock_quantity);
@@ -114,11 +114,11 @@ class InventoryTest extends TestCase
 
         $this->postJson('/inventory/movements', [
             'item_type' => 'product', 'item_id' => $product->id, 'type' => 'entry',
-            'quantity' => '1.500', 'reason' => 'Compra',
+            'quantity' => '1.500', 'total_cost' => '35.00', 'reason' => 'Compra',
         ])->assertUnprocessable()->assertJsonValidationErrors('quantity');
         $this->post('/inventory/movements', [
             'item_type' => 'supply', 'item_id' => $supply->id, 'type' => 'entry',
-            'quantity' => '5', 'reason' => 'Compra',
+            'quantity' => '5', 'total_cost' => '20.00', 'reason' => 'Compra',
         ])->assertRedirect();
         $this->putJson("/inventory/supplies/{$supply->id}", [
             'name' => 'Creme', 'unit' => 'kg', 'min_stock' => '0',

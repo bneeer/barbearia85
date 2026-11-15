@@ -17,6 +17,7 @@ class Service extends Model
         'description',
         'duration',
         'price',
+        'commission_percent',
         'is_active',
     ];
 
@@ -25,6 +26,7 @@ class Service extends Model
         return [
             'is_active' => 'boolean',
             'price' => 'decimal:2',
+            'commission_percent' => 'decimal:2',
         ];
     }
 
@@ -41,5 +43,11 @@ class Service extends Model
     public function barbers()
     {
         return $this->belongsToMany(User::class, 'barber_service');
+    }
+
+    public function supplies()
+    {
+        return $this->belongsToMany(Supply::class, 'service_supplies')
+            ->withPivot('quantity');
     }
 }

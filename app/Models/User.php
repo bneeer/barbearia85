@@ -58,7 +58,13 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function barbershops()
     {
-        return $this->belongsToMany(Barbershop::class)->withTimestamps();
+        return $this->belongsToMany(Barbershop::class)
+            ->withPivot('salary_base_cents')->withTimestamps();
+    }
+
+    public function salaryRates()
+    {
+        return $this->hasMany(BarberSalaryRate::class);
     }
 
     public function appointments()

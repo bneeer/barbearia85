@@ -61,6 +61,13 @@ defineProps<{
                     compartilhados dependerão do serviço escolhido.
                 </p>
                 <p>
+                    A consulta de agendamentos envia um link válido por uma hora
+                    ao e-mail informado. Quem tiver acesso ao link poderá ver os
+                    agendamentos associados ao mesmo e-mail em todas as
+                    unidades, inclusive quando o endereço for compartilhado. Não
+                    compartilhe esse link.
+                </p>
+                <p>
                     Pendente de confirmação: identidade dos responsáveis e
                     fornecedores, locais de armazenamento e eventual
                     transferência internacional de dados, incluindo as

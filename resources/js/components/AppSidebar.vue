@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Group, Home, Scissor, Shop } from '@iconoir/vue';
+import { Group, Home, Scissor, Shop, Coins } from '@iconoir/vue';
 import { Link } from '@inertiajs/vue3';
 import {
     CalendarDays,
@@ -26,11 +26,11 @@ import { useAuth } from '@/composables/useAuth';
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
 
-const { isAdmin } = useAuth();
+const { isAdmin, isBarber } = useAuth();
 
-const mainNavItems: NavItem[] = [
+const standaloneNavItems: NavItem[] = [
     {
-        title: 'Início',
+        title: 'Painel Geral',
         href: dashboard(),
         icon: Home,
     },
@@ -39,28 +39,19 @@ const mainNavItems: NavItem[] = [
         href: '/schedule',
         icon: CalendarDays,
     },
+];
+
+const operationNavItems: NavItem[] = [
     {
-        title: 'Caixa',
-        href: '/cash-register',
-        icon: CircleDollarSign,
+        title: 'Barbearias',
+        href: '/barbershops',
+        icon: Shop,
         requiresAdmin: true,
     },
     {
         title: 'Barbeiros',
         href: '/barbers',
         icon: Group,
-        requiresAdmin: true,
-    },
-    {
-        title: 'Clientes',
-        href: '/clients',
-        icon: Users,
-        requiresAdmin: true,
-    },
-    {
-        title: 'Barbearias',
-        href: '/barbershops',
-        icon: Shop,
         requiresAdmin: true,
     },
     {
@@ -79,6 +70,26 @@ const mainNavItems: NavItem[] = [
         title: 'Estoque',
         href: '/inventory',
         icon: Boxes,
+        requiresAdmin: true,
+    },
+    {
+        title: 'Clientes',
+        href: '/clients',
+        icon: Users,
+        requiresAdmin: true,
+    },
+];
+
+const managementNavItems: NavItem[] = [
+    {
+        title: 'Despesas e Faturamento',
+        href: '/finance',
+        icon: CircleDollarSign,
+    },
+    {
+        title: 'Caixa',
+        href: '/cash-register',
+        icon: Coins,
         requiresAdmin: true,
     },
 ];
@@ -100,6 +111,10 @@ const bottomNavItems: NavItem[] = [
 
 const filterNavItems = (items: NavItem[]) =>
     items.filter((item) => {
+        if (item.href === '/finance') {
+            return isBarber.value;
+        }
+
         if (item.requiresAdmin) {
             return isAdmin.value;
         }
@@ -107,7 +122,9 @@ const filterNavItems = (items: NavItem[]) =>
         return true;
     });
 
-const filteredNavItems = filterNavItems(mainNavItems);
+const filteredStandaloneNavItems = filterNavItems(standaloneNavItems);
+const filteredOperationNavItems = filterNavItems(operationNavItems);
+const filteredManagementNavItems = filterNavItems(managementNavItems);
 const filteredBottomNavItems = filterNavItems(bottomNavItems);
 </script>
 
@@ -126,12 +143,23 @@ const filteredBottomNavItems = filterNavItems(bottomNavItems);
         </SidebarHeader>
 
         <SidebarContent>
-            <NavMain label="Minha barbearia" :items="filteredNavItems" />
+            <NavMain :items="filteredStandaloneNavItems" />
+            <NavMain
+                v-if="filteredOperationNavItems.length"
+                label="Operação"
+                :items="filteredOperationNavItems"
+            />
+            <NavMain
+                v-if="filteredManagementNavItems.length"
+                label="Contabilidade"
+                :items="filteredManagementNavItems"
+            />
         </SidebarContent>
 
         <SidebarFooter>
             <NavMain
                 v-if="filteredBottomNavItems.length"
+                label="Outros"
                 :items="filteredBottomNavItems"
             />
             <NavUser />

@@ -22,6 +22,7 @@ type Item = {
     brand: string;
     description: string | null;
     price: string | null;
+    average_cost_milli_cents: number | null;
     stock_quantity: number | string;
     min_stock: number | string;
     unit: string | null;
@@ -31,6 +32,7 @@ type PageLink = { url: string | null; label: string; active: boolean };
 type Movement = {
     id: number;
     type: 'entry' | 'exit' | 'adjustment';
+    cost_total_cents: number | null;
     quantity: string;
     balance_after: string;
     reason: string;
@@ -79,6 +81,7 @@ const movementForm = useForm({
     item_id: 0,
     type: 'entry',
     quantity: '1',
+    total_cost: '',
     reason: '',
 });
 const selectedUnit = computed(() =>
@@ -170,6 +173,7 @@ function openMovement(item: Item) {
     movementForm.item_id = item.id;
     movementForm.type = 'entry';
     movementForm.quantity = item.type === 'product' ? '1' : '1';
+    movementForm.total_cost = '';
     movementForm.reason = '';
     movementOpen.value = true;
 }
@@ -347,6 +351,24 @@ function movementQuantity(movement: Movement) {
                                           )
                                         : '—'
                                 }}
+                                <p
+                                    v-if="
+                                        item.average_cost_milli_cents !== null
+                                    "
+                                    class="text-xs text-muted-foreground"
+                                >
+                                    Custo médio:
+                                    {{
+                                        currencyFormat.format(
+                                            item.average_cost_milli_cents /
+                                                100000,
+                                        )
+                                    }}
+                                    / {{ item.unit ?? 'un' }}
+                                </p>
+                                <p v-else class="text-xs text-muted-foreground">
+                                    Custo médio desconhecido
+                                </p>
                             </td>
                             <td class="p-4">
                                 {{ quantity(item.stock_quantity, item.unit) }}
@@ -507,6 +529,17 @@ function movementQuantity(movement: Movement) {
                             </td>
                             <td class="p-4">
                                 <p>{{ movement.reason }}</p>
+                                <p
+                                    v-if="movement.cost_total_cents !== null"
+                                    class="text-muted-foreground"
+                                >
+                                    Custo da movimentação:
+                                    {{
+                                        currencyFormat.format(
+                                            movement.cost_total_cents / 100,
+                                        )
+                                    }}
+                                </p>
                                 <p class="text-muted-foreground">
                                     {{ movement.user_name }}
                                 </p>
@@ -692,6 +725,24 @@ function movementQuantity(movement: Movement) {
                         required
                     />
                     <InputError :message="movementForm.errors.quantity" />
+                </div>
+                <div v-if="movementForm.type === 'entry'" class="grid gap-2">
+                    <Label for="movement-total-cost"
+                        >Custo total da entrada (R$)</Label
+                    >
+                    <Input
+                        id="movement-total-cost"
+                        v-model="movementForm.total_cost"
+                        type="number"
+                        min="0"
+                        max="999999999.99"
+                        step="0.01"
+                        required
+                    />
+                    <p class="text-xs text-muted-foreground">
+                        Usado para recalcular o custo médio ponderado do saldo.
+                    </p>
+                    <InputError :message="movementForm.errors.total_cost" />
                 </div>
                 <div class="grid gap-2">
                     <Label for="movement-reason">Motivo</Label>

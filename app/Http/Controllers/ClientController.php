@@ -6,6 +6,7 @@ use App\Models\Appointment;
 use App\Models\Client;
 use App\Models\Scopes\BarbershopScope;
 use App\Services\ClientPrivacyLookup;
+use App\Services\LoyaltyProgram;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -38,7 +39,7 @@ class ClientController extends Controller
         ]);
     }
 
-    public function show(Request $request, int $id, ClientPrivacyLookup $lookup)
+    public function show(Request $request, int $id, ClientPrivacyLookup $lookup, LoyaltyProgram $loyalty)
     {
         $this->authorizeAdmin($request);
         $client = $lookup->client($id);
@@ -64,6 +65,7 @@ class ClientController extends Controller
                 'phone' => $client->phone, 'notes' => $client->notes,
                 'unit' => $client->barbershop?->name, 'archived' => $client->trashed(),
             ],
+            'loyalty' => $loyalty->forClient($client),
             'appointments' => $appointments,
             'matches' => $lookup->matches($client),
             'requests' => \DB::table('privacy_requests')
@@ -73,5 +75,15 @@ class ClientController extends Controller
                     'privacy_requests.id', 'privacy_requests.protocol', 'privacy_requests.type', 'privacy_requests.status',
                 ]),
         ]);
+    }
+
+    public function redeemLoyalty(Request $request, int $id, ClientPrivacyLookup $lookup, LoyaltyProgram $loyalty)
+    {
+        $this->authorizeAdmin($request);
+        $client = $lookup->client($id);
+        $loyalty->redeem($client, $request->user()->id);
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Resgate da recompensa registrado.']);
+
+        return redirect()->route('clients.show', ['id' => $client->id]);
     }
 }

@@ -18,6 +18,8 @@ class StockMovement extends Model
         'balance_before',
         'balance_after',
         'reason',
+        'unit_cost_milli_cents',
+        'cost_total_cents',
     ];
 
     protected function casts(): array
@@ -26,6 +28,8 @@ class StockMovement extends Model
             'quantity' => 'decimal:3',
             'balance_before' => 'decimal:3',
             'balance_after' => 'decimal:3',
+            'unit_cost_milli_cents' => 'integer',
+            'cost_total_cents' => 'integer',
         ];
     }
 

@@ -65,4 +65,9 @@ class CashRegister extends Model
     {
         return $this->hasMany(AppointmentCheckout::class);
     }
+
+    public function expensePayments()
+    {
+        return $this->hasMany(ExpensePayment::class);
+    }
 }

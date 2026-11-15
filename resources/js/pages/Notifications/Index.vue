@@ -79,6 +79,7 @@ const labels: Record<string, string> = {
     booking_rescheduled: 'Reagendamento',
     booking_cancellation: 'Cancelamento',
     booking_cancellation_request: 'Solicitação de cancelamento',
+    client_portal_access: 'Acesso à área do cliente',
     client: 'Cliente',
     barber: 'Barbeiro',
     admin: 'Administrador',
@@ -234,6 +235,7 @@ defineOptions({
                             'booking_rescheduled',
                             'booking_cancellation',
                             'booking_cancellation_request',
+                            'client_portal_access',
                         ]"
                         :key="event"
                         :value="event"

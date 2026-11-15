@@ -46,6 +46,24 @@ defineOptions({
                 <dd>{{ service.duration }} min</dd>
             </div>
             <div>
+                <dt class="text-sm text-muted-foreground">Comissão</dt>
+                <dd>{{ service.commission_percent }}%</dd>
+            </div>
+            <div>
+                <dt class="text-sm text-muted-foreground">
+                    Insumos por atendimento
+                </dt>
+                <dd v-if="!service.supplies?.length">
+                    Nenhum insumo configurado.
+                </dd>
+                <ul v-else>
+                    <li v-for="supply in service.supplies" :key="supply.id">
+                        {{ supply.name }} · {{ supply.pivot.quantity }}
+                        {{ supply.unit }}
+                    </li>
+                </ul>
+            </div>
+            <div>
                 <dt class="text-sm text-muted-foreground">Estado</dt>
                 <dd>{{ service.is_active ? 'Ativo' : 'Inativo' }}</dd>
             </div>

@@ -28,7 +28,9 @@ const requestedTab = new URLSearchParams(pageUrl.split('?')[1] ?? '').get(
     'tab',
 );
 const activeTab = ref(
-    ['basic', 'hours', 'barbers', 'photos'].includes(requestedTab ?? '')
+    ['basic', 'hours', 'barbers', 'photos', 'loyalty'].includes(
+        requestedTab ?? '',
+    )
         ? requestedTab!
         : 'basic',
 );
@@ -49,6 +51,10 @@ const form = useForm({
         props.barbershop?.cancellation_notice_hours ?? 12,
     no_show_tolerance_minutes:
         props.barbershop?.no_show_tolerance_minutes ?? 10,
+    loyalty_enabled: props.barbershop?.loyalty_enabled ?? false,
+    loyalty_stamp_goal: props.barbershop?.loyalty_stamp_goal ?? 5,
+    loyalty_reward_description:
+        props.barbershop?.loyalty_reward_description ?? '',
     opening_hours: props.barbershop?.opening_hours ?? props.defaultHours,
     barber_ids: props.barberIds,
 });
@@ -107,6 +113,10 @@ function submit() {
                 )
             ) {
                 activeTab.value = 'barbers';
+            } else if (
+                Object.keys(errors).some((key) => key.startsWith('loyalty_'))
+            ) {
+                activeTab.value = 'loyalty';
             } else {
                 activeTab.value = 'basic';
             }
@@ -226,6 +236,12 @@ function removePhoto(photoId: number) {
                     class="rounded-md px-3 py-2 text-sm data-[state=active]:bg-background data-[state=active]:shadow"
                 >
                     Fotos
+                </TabsTrigger>
+                <TabsTrigger
+                    value="loyalty"
+                    class="rounded-md px-3 py-2 text-sm data-[state=active]:bg-background data-[state=active]:shadow"
+                >
+                    Fidelidade
                 </TabsTrigger>
             </TabsList>
 
@@ -465,6 +481,56 @@ function removePhoto(photoId: number) {
                         "
                     />
                 </fieldset>
+            </TabsContent>
+
+            <TabsContent value="loyalty" class="space-y-5">
+                <fieldset class="space-y-2">
+                    <legend class="text-sm font-medium">
+                        Programa de fidelidade
+                    </legend>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input v-model="form.loyalty_enabled" type="checkbox" />
+                        Habilitar programa nesta unidade
+                    </label>
+                    <p class="text-sm text-muted-foreground">
+                        Ao habilitar, atendimentos pagos finalizados a partir
+                        desta data geram carimbos. Desabilitar pausa novos
+                        carimbos e resgates sem apagar o saldo existente.
+                    </p>
+                    <InputError :message="form.errors.loyalty_enabled" />
+                </fieldset>
+                <div class="grid gap-2">
+                    <Label for="loyalty-stamp-goal">
+                        Atendimentos para liberar uma recompensa
+                    </Label>
+                    <Input
+                        id="loyalty-stamp-goal"
+                        v-model="form.loyalty_stamp_goal"
+                        type="number"
+                        min="1"
+                        max="2147483647"
+                        step="1"
+                        required
+                    />
+                    <InputError :message="form.errors.loyalty_stamp_goal" />
+                </div>
+                <div class="grid gap-2">
+                    <Label for="loyalty-reward-description"> Recompensa </Label>
+                    <textarea
+                        id="loyalty-reward-description"
+                        v-model="form.loyalty_reward_description"
+                        maxlength="255"
+                        rows="3"
+                        :required="form.loyalty_enabled"
+                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    />
+                    <p class="text-sm text-muted-foreground">
+                        A equipe registrará o resgate no cadastro do cliente.
+                    </p>
+                    <InputError
+                        :message="form.errors.loyalty_reward_description"
+                    />
+                </div>
             </TabsContent>
 
             <TabsContent value="photos" class="space-y-5">

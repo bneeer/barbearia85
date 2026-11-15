@@ -62,6 +62,7 @@ test('public pages have one unconditional footer outside forms', async () => {
     for (const path of [
         'resources/js/pages/Booking.vue',
         'resources/js/pages/BookingCancellation.vue',
+        'resources/js/pages/ClientPortal.vue',
         'resources/js/pages/PrivacyPolicy.vue',
         'resources/js/layouts/auth/AuthSimpleLayout.vue',
     ]) {
@@ -122,6 +123,10 @@ test('home is excluded and public pages use the intended layouts', async () => {
     const home = await read('resources/js/pages/Welcome.vue');
     assert.doesNotMatch(home, /PublicFooter|politica-de-privacidade/);
     const app = await read('resources/js/app.ts');
+    assert.match(
+        app,
+        /case name === 'ClientPortal':\s*case name === 'PrivacyPolicy':\s*return null/,
+    );
     assert.match(app, /case name === 'PrivacyPolicy':\s*return null/);
     assert.match(app, /case name\.startsWith\('auth\/'\):\s*return AuthLayout/);
     const layout = await read('resources/js/layouts/AuthLayout.vue');

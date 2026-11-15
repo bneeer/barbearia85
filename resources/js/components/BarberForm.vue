@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ArrowLeft, FloppyDisk } from '@iconoir/vue';
 import { Link, useForm } from '@inertiajs/vue3';
+import { watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import PhoneInput from '@/components/PhoneInput.vue';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,12 @@ const props = defineProps<{
     barbershops: BarberShopOption[];
     defaultBarbershopId: number;
 }>();
+const initialSalary = Object.fromEntries(
+    (props.barber?.barbershops ?? []).map((shop) => [
+        String(shop.id),
+        ((shop.pivot?.salary_base_cents ?? 0) / 100).toFixed(2),
+    ]),
+);
 const form = useForm({
     name: props.barber?.name ?? '',
     email: props.barber?.email ?? '',
@@ -29,7 +36,17 @@ const form = useForm({
               ? [props.barber.barbershop_id]
               : []
         : [props.defaultBarbershopId],
+    salary_base: initialSalary as Record<string, string>,
 });
+watch(
+    () => form.barbershop_ids,
+    (ids) => {
+        for (const id of ids) {
+            form.salary_base[String(id)] ??= '0.00';
+        }
+    },
+    { deep: true, immediate: true },
+);
 
 function selectPhoto(event: Event) {
     const input = event.target as HTMLInputElement;
@@ -45,6 +62,7 @@ function submit() {
             photo: data.photo,
             service_ids: data.service_ids,
             barbershop_ids: data.barbershop_ids,
+            salary_base: data.salary_base,
             _method: 'PUT',
         })).post(`/barbers/${props.barber.id}`, { forceFormData: true });
     } else {
@@ -84,10 +102,7 @@ function submit() {
         </div>
         <div class="grid gap-2">
             <Label for="phone">Telefone</Label>
-            <PhoneInput
-                id="phone"
-                v-model="form.phone"
-            />
+            <PhoneInput id="phone" v-model="form.phone" />
             <InputError :message="form.errors.phone" />
         </div>
         <div class="grid gap-2">
@@ -166,11 +181,39 @@ function submit() {
                     />
                     {{ barbershop.name }}
                 </label>
+                <div
+                    v-for="barbershop in barbershops.filter((item) =>
+                        form.barbershop_ids.includes(item.id),
+                    )"
+                    :key="`salary-${barbershop.id}`"
+                    class="grid gap-1 pl-6"
+                >
+                    <Label :for="`salary-${barbershop.id}`">
+                        Salário base mensal em {{ barbershop.name }} (R$)
+                    </Label>
+                    <Input
+                        :id="`salary-${barbershop.id}`"
+                        v-model="form.salary_base[String(barbershop.id)]"
+                        type="number"
+                        min="0"
+                        max="99999999.99"
+                        step="0.01"
+                        required
+                    />
+                </div>
             </div>
             <p v-else class="text-sm text-muted-foreground">
                 Nenhuma unidade cadastrada.
             </p>
             <InputError :message="form.errors.barbershop_ids" />
+            <InputError :message="form.errors.salary_base" />
+            <InputError
+                v-for="(message, key) in form.errors"
+                :key="key"
+                :message="
+                    String(key).startsWith('salary_base.') ? message : undefined
+                "
+            />
             <InputError
                 v-for="(message, key) in form.errors"
                 :key="key"

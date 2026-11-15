@@ -18,6 +18,7 @@ class Supply extends Model
         'unit',
         'stock_quantity',
         'min_stock',
+        'average_cost_milli_cents',
     ];
 
     protected function casts(): array
@@ -25,11 +26,18 @@ class Supply extends Model
         return [
             'stock_quantity' => 'decimal:3',
             'min_stock' => 'decimal:3',
+            'average_cost_milli_cents' => 'integer',
         ];
     }
 
     public function stockMovements()
     {
         return $this->morphMany(StockMovement::class, 'stockable');
+    }
+
+    public function services()
+    {
+        return $this->belongsToMany(Service::class, 'service_supplies')
+            ->withPivot('quantity');
     }
 }

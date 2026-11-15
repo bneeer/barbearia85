@@ -11,6 +11,10 @@ export type Barber = {
     phone: string | null;
     avatar: string | null;
     barbershop_id: number | null;
-    barbershops: { id: number; name: string }[];
+    barbershops: {
+        id: number;
+        name: string;
+        pivot?: { salary_base_cents: number };
+    }[];
     services: BarberService[];
 };

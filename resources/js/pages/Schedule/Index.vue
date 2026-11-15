@@ -32,7 +32,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { DISPLAY_TIMEZONE } from '@/lib/dateTime';
 
-type Service = { id: number; name: string; duration: number; price: string };
+type Service = {
+    id: number;
+    name: string;
+    duration: number;
+    price: string;
+    supplies?: {
+        id: number;
+        name: string;
+        unit: string;
+        quantity: string;
+        stock_quantity: string;
+    }[];
+};
 type Product = {
     id: number;
     name: string;
@@ -85,7 +97,7 @@ type Details = {
     barberId: number;
     barberName: string;
     client?: { name: string; email: string; phone: string };
-    services?: { id: number; name: string; duration: number; price: string }[];
+    services?: Service[];
     status?: string;
     notes?: string;
     reason?: string;
@@ -191,6 +203,7 @@ const calendarSelection = ref<CalendarSelection | null>(null);
 const detailsOpen = ref(false);
 const checkoutOpen = ref(false);
 const checkoutProducts = ref<{ id: number; quantity: number }[]>([]);
+const confirmedConsumptions = ref<string[]>([]);
 const productToAdd = ref('');
 const discount = ref<string | number>('');
 const paymentMethod = ref('');
@@ -374,7 +387,7 @@ function isPastSelection(selection: CalendarSelection | null) {
     return selection.allDay
         ? selection.start.slice(0, 10) <
               localTime(new Date().toISOString()).slice(0, 10)
-        : selection.startsAt <= Date.now(new \DateTimeZone('America/Sao_Paulo'));
+        : selection.startsAt <= Date.now();
 }
 function openCreateAppointment(selection: CalendarSelection | null = null) {
     if (!shop.value || !shop.value.barbers.length || busy.value) {
@@ -606,6 +619,7 @@ async function openCheckout() {
     }
 
     checkoutProducts.value = [];
+    confirmedConsumptions.value = [];
     productToAdd.value = '';
     discount.value = '';
     paymentMethod.value = '';
@@ -648,7 +662,7 @@ async function submitCheckout() {
     checkoutError.value = '';
 
     try {
-        await request(
+        const result = await request<{ warnings: string[] }>(
             `/schedule/appointments/${selected.value.details.recordId}/checkout`,
             'POST',
             {
@@ -666,13 +680,30 @@ async function submitCheckout() {
                     quantity: item.quantity,
                     price_cents: Math.round(Number(item.product?.price) * 100),
                 })),
+                confirmed_consumptions: confirmedConsumptions.value.map(
+                    (key) => {
+                        const [service_id, supply_id] = key
+                            .split(':')
+                            .map(Number);
+
+                        return { service_id, supply_id };
+                    },
+                ),
                 discount_cents: discountCents.value,
                 payment_method: paymentMethod.value,
                 notes: checkoutNotes.value.trim() || null,
             },
         );
         checkoutOpen.value = false;
-        toast.success('Atendimento finalizado.');
+
+        if (result.warnings.length) {
+            toast.warning(
+                `Atendimento finalizado. ${result.warnings.join(' ')}`,
+            );
+        } else {
+            toast.success('Atendimento finalizado.');
+        }
+
         refresh();
     } catch (error) {
         checkoutError.value = message(error);
@@ -681,6 +712,7 @@ async function submitCheckout() {
         busy.value = false;
     }
 }
+
 function editBlock() {
     if (!selected.value) {
         return;
@@ -881,7 +913,7 @@ const options = computed<CalendarOptions>(() => ({
             allDay: selection.allDay,
             durationMinutes: null,
         }),
-    eventAllow: (selection) => selection.start.getTime() > Date.now(new \DateTimeZone('America/Sao_Paulo')),
+    eventAllow: (selection) => selection.start.getTime() > Date.now(),
     selectMirror: true,
     longPressDelay: 400,
     eventTimeFormat: { hour: '2-digit', minute: '2-digit', hour12: false },
@@ -1840,6 +1872,53 @@ const options = computed<CalendarOptions>(() => ({
                         <p class="text-right text-sm font-medium">
                             {{ currency.format(serviceTotalCents / 100) }}
                         </p>
+                    </fieldset>
+                    <fieldset
+                        v-if="
+                            selected?.details.services?.some(
+                                (service) => service.supplies?.length,
+                            )
+                        "
+                        class="space-y-3 border-t pt-4"
+                        :disabled="busy"
+                    >
+                        <legend class="text-sm font-semibold">
+                            Consumo sugerido de insumos
+                        </legend>
+                        <p class="text-xs text-muted-foreground">
+                            Confirme cada consumo para baixar do estoque. Se não
+                            houver saldo suficiente, o atendimento será
+                            finalizado sem baixar aquele insumo.
+                        </p>
+                        <div
+                            v-for="service in selected?.details.services"
+                            :key="service.id"
+                            class="space-y-2"
+                        >
+                            <p
+                                v-if="service.supplies?.length"
+                                class="text-sm font-medium"
+                            >
+                                {{ service.name }}
+                            </p>
+                            <label
+                                v-for="supply in service.supplies ?? []"
+                                :key="`${service.id}:${supply.id}`"
+                                class="flex items-start gap-2 text-sm"
+                            >
+                                <input
+                                    v-model="confirmedConsumptions"
+                                    type="checkbox"
+                                    :value="`${service.id}:${supply.id}`"
+                                    class="mt-1"
+                                />
+                                <span>
+                                    {{ supply.name }} · {{ supply.quantity }}
+                                    {{ supply.unit }} · em estoque:
+                                    {{ supply.stock_quantity }}
+                                </span>
+                            </label>
+                        </div>
                     </fieldset>
                     <fieldset class="space-y-2 border-t pt-4" :disabled="busy">
                         <legend class="text-sm font-semibold">Produtos</legend>

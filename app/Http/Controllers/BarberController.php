@@ -2,17 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BarberSalaryRate;
 use App\Models\Barbershop;
 use App\Models\Service;
 use App\Models\User;
 use App\Rules\InternationalPhone;
 use App\Support\BarberPhoto;
 use App\Support\PhoneNumber;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Throwable;
 
@@ -53,13 +56,82 @@ class BarberController extends Controller
                 ->where('barbershop_id', $request->user()->barbershop_id)->whereNull('deleted_at')],
             'barbershop_ids' => ['sometimes', 'array'],
             'barbershop_ids.*' => ['required', 'integer', 'distinct', Rule::exists('barbershops', 'id')],
+            'salary_base' => ['sometimes', 'array'],
+            'salary_base.*' => ['required', 'numeric', 'min:0', 'max:99999999.99', 'regex:/^\d+(\.\d{1,2})?$/'],
         ]);
+        if (isset($data['salary_base'])) {
+            $selectedIds = array_map('strval', $data['barbershop_ids'] ?? []);
+            if (array_diff(array_map('strval', array_keys($data['salary_base'])), $selectedIds)) {
+                throw ValidationException::withMessages([
+                    'salary_base' => 'Informe salário apenas para unidades selecionadas.',
+                ]);
+            }
+        }
 
         if (isset($data['phone'])) {
             $data['phone'] = PhoneNumber::normalize($data['phone']);
         }
 
         return $data;
+    }
+
+    private function syncBarbershops(User $barber, array $barbershopIds, array $salaryBase): void
+    {
+        $currentPivot = $barber->barbershops()->get()->keyBy('id');
+        $previousIds = $currentPivot->keys()->map(fn ($id) => (int) $id)->all();
+        $shopIds = array_unique([...array_map('intval', $barbershopIds), ...$previousIds]);
+        $timezones = Barbershop::query()->whereIn('id', $shopIds)->pluck('timezone', 'id');
+        $sync = [];
+
+        foreach ($barbershopIds as $barbershopId) {
+            $barbershopId = (int) $barbershopId;
+            $today = CarbonImmutable::now($timezones[$barbershopId] ?? config('app.timezone'))->toDateString();
+            $rawSalary = $salaryBase[$barbershopId] ?? $salaryBase[(string) $barbershopId] ?? null;
+            $currentSalary = $currentPivot->get($barbershopId)?->pivot->salary_base_cents;
+            $salaryCents = $rawSalary === null && $currentSalary !== null
+                ? (int) $currentSalary
+                : $this->cents((string) ($rawSalary ?? '0'));
+            $sync[$barbershopId] = ['salary_base_cents' => $salaryCents];
+
+            if ($currentSalary === null || (int) $currentSalary !== $salaryCents) {
+                $previousDay = CarbonImmutable::parse($today)->subDay()->toDateString();
+                $barber->salaryRates()->where('barbershop_id', $barbershopId)
+                    ->whereNull('effective_until')->whereDate('effective_from', '<', $today)
+                    ->update(['effective_until' => $previousDay]);
+                $rate = BarberSalaryRate::query()->where('barbershop_id', $barbershopId)
+                    ->where('user_id', $barber->id)->whereDate('effective_from', $today)->first();
+                if ($rate) {
+                    $rate->update(['salary_base_cents' => $salaryCents, 'effective_until' => null]);
+                } else {
+                    BarberSalaryRate::create([
+                        'barbershop_id' => $barbershopId,
+                        'user_id' => $barber->id,
+                        'salary_base_cents' => $salaryCents,
+                        'effective_from' => $today,
+                    ]);
+                }
+            }
+        }
+
+        foreach (array_diff($previousIds, array_map('intval', $barbershopIds)) as $removedId) {
+            $today = CarbonImmutable::now($timezones[$removedId] ?? config('app.timezone'))->toDateString();
+            $previousDay = CarbonImmutable::parse($today)->subDay()->toDateString();
+            $barber->salaryRates()->where('barbershop_id', $removedId)
+                ->whereNull('effective_until')->whereDate('effective_from', '<', $today)
+                ->update(['effective_until' => $previousDay]);
+            $barber->salaryRates()->where('barbershop_id', $removedId)
+                ->whereNull('effective_until')->whereDate('effective_from', $today)
+                ->delete();
+        }
+
+        $barber->barbershops()->sync($sync);
+    }
+
+    private function cents(string $amount): int
+    {
+        [$whole, $fraction] = array_pad(explode('.', str_replace(',', '.', $amount), 2), 2, '0');
+
+        return (int) $whole * 100 + (int) str_pad($fraction, 2, '0');
     }
 
     public function index(Request $request)
@@ -125,7 +197,11 @@ class BarberController extends Controller
                 $barber->photo_path = $photo;
                 $barber->save();
                 $barber->services()->sync($data['service_ids'] ?? []);
-                $barber->barbershops()->sync($data['barbershop_ids'] ?? [$request->user()->barbershop_id]);
+                $this->syncBarbershops(
+                    $barber,
+                    $data['barbershop_ids'] ?? [$request->user()->barbershop_id],
+                    $data['salary_base'] ?? [],
+                );
             });
         } catch (Throwable $exception) {
             if ($photo) {
@@ -172,7 +248,7 @@ class BarberController extends Controller
                 $barber->save();
                 $barber->services()->sync($data['service_ids'] ?? []);
                 if (array_key_exists('barbershop_ids', $data)) {
-                    $barber->barbershops()->sync($data['barbershop_ids']);
+                    $this->syncBarbershops($barber, $data['barbershop_ids'], $data['salary_base'] ?? []);
                 }
             });
         } catch (Throwable $exception) {

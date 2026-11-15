@@ -39,6 +39,9 @@ export type Barbershop = {
     is_open: boolean;
     cancellation_notice_hours: number;
     no_show_tolerance_minutes: number;
+    loyalty_enabled: boolean;
+    loyalty_stamp_goal: number;
+    loyalty_reward_description: string | null;
     users_count?: number;
     users?: BarbershopBarber[];
     photos?: BarbershopPhoto[];

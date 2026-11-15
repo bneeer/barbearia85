@@ -45,7 +45,9 @@ class CashRegisterController extends Controller
         $shop = $barbershopId ? Barbershop::findOrFail($barbershopId) : null;
         $register = $shop
             ? CashRegister::query()->where('barbershop_id', $shop->id)
-                ->whereNull('closed_at')->with(['openedBy', 'withdrawals.user'])->first()
+                ->whereNull('closed_at')->with([
+                    'openedBy', 'withdrawals.user', 'expensePayments.user', 'expensePayments.expense',
+                ])->first()
             : null;
 
         return Inertia::render('CashRegister/Index', [
@@ -61,6 +63,7 @@ class CashRegisterController extends Controller
                 'opened_by' => $register->openedBy->name,
                 'opening_amount_cents' => $register->opening_amount_cents,
                 'sales_cents' => $summary->sales($register),
+                'expense_payments_cents' => $summary->expensePayments($register),
                 'expected_cents' => $summary->expected($register),
                 'checkout_count' => $register->checkouts()->count(),
                 'withdrawals_total_cents' => $register->withdrawals->sum('amount_cents'),
@@ -71,10 +74,17 @@ class CashRegisterController extends Controller
                     'user' => $withdrawal->user->name,
                     'created_at' => $withdrawal->created_at->toIso8601String(),
                 ]),
+                'expense_payments' => $register->expensePayments->map(fn ($payment) => [
+                    'amount_cents' => $payment->amount_cents,
+                    'payment_method' => $payment->payment_method,
+                    'expense_title' => $payment->expense->title,
+                    'user' => $payment->user->name,
+                    'paid_at' => $payment->paid_at->toIso8601String(),
+                ]),
             ] : null,
             'history' => $shop ? CashRegister::query()
                 ->where('barbershop_id', $shop->id)->whereNotNull('closed_at')
-                ->with(['openedBy', 'closedBy', 'withdrawals.user'])->latest('closed_at')->limit(10)->get()
+                ->with(['openedBy', 'closedBy', 'withdrawals.user', 'expensePayments'])->latest('closed_at')->limit(10)->get()
                 ->map(fn (CashRegister $closed) => [
                     'id' => $closed->id,
                     'opened_at' => $closed->opened_at->toIso8601String(),
@@ -83,6 +93,7 @@ class CashRegisterController extends Controller
                     'closed_by' => $closed->closedBy->name,
                     'opening_amount_cents' => $closed->opening_amount_cents,
                     'closure' => $summary->closure($closed),
+                    'expense_payments_cents' => $summary->expensePayments($closed),
                     'closing_note' => $closed->closing_note,
                     'withdrawals' => $closed->withdrawals->map(fn ($withdrawal) => [
                         'amount_cents' => $withdrawal->amount_cents,

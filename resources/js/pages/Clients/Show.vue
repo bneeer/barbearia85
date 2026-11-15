@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import ClientMatches from '@/components/ClientMatches.vue';
+import InputError from '@/components/InputError.vue';
 import PrivacyPagination from '@/components/PrivacyPagination.vue';
+import { Button } from '@/components/ui/button';
 import type { ClientMatch, ClientSummary, Page } from '@/types/privacy';
 
 type Appointment = {
@@ -20,12 +22,24 @@ type LinkedRequest = {
     type: string;
     status: string;
 };
+type LoyaltyProgress = {
+    barbershopId: number;
+    barbershop: string;
+    enabled: boolean;
+    goal: number;
+    reward: string | null;
+    stampsBalance: number;
+    stampsProgress: number;
+    rewardsAvailable: number;
+};
 defineProps<{
     client: ClientSummary & { notes: string | null };
+    loyalty: LoyaltyProgress | null;
     appointments: Page<Appointment>;
     matches: ClientMatch[];
     requests: LinkedRequest[];
 }>();
+const redeemForm = useForm<{ loyalty?: string }>({});
 const statuses: Record<string, string> = {
     scheduled: 'Agendado',
     completed: 'Concluído',
@@ -66,6 +80,50 @@ defineOptions({
                 <dd class="whitespace-pre-wrap">{{ client.notes }}</dd>
             </div>
         </dl>
+        <section
+            v-if="loyalty"
+            class="space-y-3 rounded-xl border p-4"
+            aria-labelledby="loyalty-title"
+        >
+            <div>
+                <h2 id="loyalty-title" class="text-xl font-semibold">
+                    Fidelidade · {{ loyalty.barbershop }}
+                </h2>
+                <p class="text-sm text-muted-foreground">
+                    {{
+                        loyalty.enabled
+                            ? 'Programa habilitado'
+                            : 'Programa desabilitado'
+                    }}
+                    · {{ loyalty.stampsBalance }} carimbos acumulados
+                </p>
+            </div>
+            <p v-if="loyalty.reward">Recompensa: {{ loyalty.reward }}</p>
+            <p v-if="loyalty.enabled">
+                Progresso: {{ loyalty.stampsProgress }} de {{ loyalty.goal }}
+                carimbos para a próxima recompensa.
+            </p>
+            <p v-if="loyalty.rewardsAvailable">
+                Recompensas disponíveis: {{ loyalty.rewardsAvailable }}
+            </p>
+            <form
+                v-if="
+                    !client.archived &&
+                    loyalty.enabled &&
+                    loyalty.rewardsAvailable > 0
+                "
+                @submit.prevent="
+                    redeemForm.post(`/clients/${client.id}/loyalty/redeem`, {
+                        preserveScroll: true,
+                    })
+                "
+            >
+                <Button type="submit" :disabled="redeemForm.processing">
+                    Registrar resgate
+                </Button>
+                <InputError :message="redeemForm.errors.loyalty" />
+            </form>
+        </section>
         <section class="space-y-3">
             <h2 class="text-xl font-semibold">Histórico de agendamentos</h2>
             <div class="overflow-x-auto rounded border">

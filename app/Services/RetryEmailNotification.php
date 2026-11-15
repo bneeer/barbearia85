@@ -11,7 +11,8 @@ class RetryEmailNotification
 {
     public function allowed(Notification $notification): bool
     {
-        return $notification->type === 'email' && $notification->status === 'failed'
+        return $notification->template !== 'client_portal_access'
+            && $notification->type === 'email' && $notification->status === 'failed'
             && $notification->deduplication_key && ! $notification->provider_id
             && in_array($notification->failure_code, ['rate_limited', 'provider_unavailable', 'missing_api_key', 'unsupported_mailer', 'attempts_exhausted', 'smtp_temporary_rejection'])
             && ! app(EmailDelivery::class)->ineligible($notification);

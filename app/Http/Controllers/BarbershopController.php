@@ -62,6 +62,14 @@ class BarbershopController extends Controller
             'is_open' => ['required', 'boolean'],
             'cancellation_notice_hours' => ['sometimes', 'required', 'integer', 'min:0', 'max:2147483647'],
             'no_show_tolerance_minutes' => ['sometimes', 'required', 'integer', 'min:0', 'max:2147483647'],
+            'loyalty_enabled' => ['sometimes', 'boolean'],
+            'loyalty_stamp_goal' => ['sometimes', 'required', 'integer', 'min:1', 'max:2147483647'],
+            'loyalty_reward_description' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::requiredIf($request->boolean('loyalty_enabled')),
+            ],
             'opening_hours' => ['required', 'array:'.implode(',', $dayKeys)],
             'barber_ids' => ['sometimes', 'array'],
             'barber_ids.*' => ['required', 'integer', 'distinct', Rule::exists('users', 'id')->where('role', 'barber')],
@@ -151,9 +159,11 @@ class BarbershopController extends Controller
         }
 
         DB::transaction(function () use ($data, $slug) {
+            $loyaltyEnabled = $data['loyalty_enabled'] ?? false;
             $barbershop = Barbershop::create([
                 ...Arr::except($data, ['barber_ids']),
                 'slug' => $slug,
+                'loyalty_enabled_at' => $loyaltyEnabled ? now() : null,
             ]);
             $barbershop->users()->sync($data['barber_ids'] ?? []);
         });
@@ -244,6 +254,11 @@ class BarbershopController extends Controller
         $this->authorizeAdmin($request);
         $data = $this->validatedData($request);
         DB::transaction(function () use ($barbershop, $data) {
+            $wasLoyaltyEnabled = $barbershop->loyalty_enabled;
+            $loyaltyEnabled = $data['loyalty_enabled'] ?? $wasLoyaltyEnabled;
+            if ($loyaltyEnabled && ! $wasLoyaltyEnabled) {
+                $data['loyalty_enabled_at'] = now();
+            }
             $barbershop->update(Arr::except($data, ['barber_ids']));
             $barbershop->users()->sync($data['barber_ids'] ?? []);
         });

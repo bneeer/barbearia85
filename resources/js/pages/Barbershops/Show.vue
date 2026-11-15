@@ -92,6 +92,25 @@ defineOptions({
             </div>
             <div>
                 <dt class="text-sm text-muted-foreground">
+                    Programa de fidelidade
+                </dt>
+                <dd>
+                    {{
+                        barbershop.loyalty_enabled
+                            ? 'Habilitado'
+                            : 'Desabilitado'
+                    }}
+                </dd>
+                <dd>
+                    {{ barbershop.loyalty_stamp_goal }} atendimentos para
+                    liberar uma recompensa
+                </dd>
+                <dd v-if="barbershop.loyalty_reward_description">
+                    Recompensa: {{ barbershop.loyalty_reward_description }}
+                </dd>
+            </div>
+            <div>
+                <dt class="text-sm text-muted-foreground">
                     Horário de funcionamento
                 </dt>
                 <dd v-for="day in days" :key="day.key" class="text-sm">

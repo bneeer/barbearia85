@@ -54,6 +54,7 @@ class NotificationEmail extends Mailable
             'booking_rescheduled' => 'Agendamento reagendado',
             'booking_cancellation' => 'Agendamento cancelado',
             'booking_cancellation_request' => 'Seus agendamentos e opções de cancelamento',
+            'client_portal_access' => 'Acesse seus agendamentos',
             default => throw new \LogicException('Unknown email template.'),
         };
     }
@@ -69,11 +70,12 @@ class NotificationEmail extends Mailable
                 'expiresAt' => $this->record->expires_at->setTimezone(config('app.display_timezone', 'America/Sao_Paulo'))->format('d/m/Y H:i T'),
             ];
         }
-        $account = in_array($this->record->template, ['verify_email', 'reset_password', 'password_changed']);
+        $account = in_array($this->record->template, ['verify_email', 'reset_password', 'password_changed', 'client_portal_access']);
         $description = match ($this->record->template) {
             'verify_email' => 'Confirme seu endereço de e-mail para acessar sua conta com segurança.',
             'reset_password' => 'Recebemos uma solicitação para redefinir sua senha. Se não foi você, ignore esta mensagem.',
             'password_changed' => 'A senha da sua conta foi alterada. Se você não reconhece esta ação, redefina sua senha e entre em contato com a barbearia.',
+            'client_portal_access' => 'Recebemos uma solicitação de acesso ao seu histórico de agendamentos. Se não foi você, ignore esta mensagem.',
             'booking_confirmation' => $this->record->audience === 'client'
                 ? 'Seu horário está reservado. Esperamos você para cuidar do seu estilo!'
                 : 'Um novo atendimento foi confirmado na agenda da unidade.',
@@ -98,6 +100,7 @@ class NotificationEmail extends Mailable
             'actionLabel' => match ($this->record->template) {
                 'verify_email' => 'Verificar e-mail',
                 'reset_password' => 'Redefinir senha',
+                'client_portal_access' => 'Consultar meus agendamentos',
                 default => 'Abrir agenda',
             },
             'expiresAt' => $this->record->expires_at?->setTimezone(config('app.display_timezone', 'America/Sao_Paulo'))->format('d/m/Y H:i T'),

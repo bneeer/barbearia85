@@ -10,10 +10,13 @@ use App\Models\Client;
 use App\Models\Product;
 use App\Models\Scopes\BarbershopScope;
 use App\Models\Service;
+use App\Models\Supply;
 use App\Models\User;
 use App\Rules\InternationalPhone;
 use App\Services\BookingAvailability;
 use App\Services\BookingNotifications;
+use App\Services\CheckoutFinancials;
+use App\Services\LoyaltyProgram;
 use App\Services\StockLedger;
 use App\Support\PhoneNumber;
 use Carbon\CarbonImmutable;
@@ -215,7 +218,11 @@ class ScheduleController extends Controller
                 'client' => fn ($query) => $query->withoutGlobalScope(BarbershopScope::class),
                 'barber',
                 'service' => fn ($query) => $query->withoutGlobalScope(BarbershopScope::class)->withTrashed(),
-                'services' => fn ($query) => $query->withoutGlobalScope(BarbershopScope::class),
+                'services' => fn ($query) => $query->withoutGlobalScope(BarbershopScope::class)
+                    ->when($request->user()->isAdmin(), fn ($query) => $query->with([
+                        'supplies' => fn ($supplies) => $supplies
+                            ->withoutGlobalScope(BarbershopScope::class)->select('supplies.id', 'supplies.name', 'supplies.unit', 'supplies.stock_quantity'),
+                    ])),
                 'checkout',
             ])->get()->map(fn ($appointment) => [
                 'id' => 'appointment-'.$appointment->id,
@@ -235,7 +242,16 @@ class ScheduleController extends Controller
                         : ($appointment->services->isNotEmpty()
                             ? $appointment->services
                             : collect([$appointment->service])->filter())
-                            ->map(fn ($service) => $service->only(['id', 'name', 'duration', 'price']))->values(),
+                            ->map(fn ($service) => [
+                                ...$service->only(['id', 'name', 'duration', 'price']),
+                                ...($request->user()->isAdmin() ? [
+                                    'commission_percent' => $service->commission_percent,
+                                    'supplies' => $service->supplies->map(fn ($supply) => [
+                                        ...$supply->only(['id', 'name', 'unit', 'stock_quantity']),
+                                        'quantity' => $supply->pivot->quantity,
+                                    ])->values(),
+                                ] : []),
+                            ])->values(),
                     'checkout' => $request->user()->isAdmin() && $appointment->checkout
                         ? $appointment->checkout->only([
                             'services', 'products', 'services_total_cents', 'products_total_cents',
@@ -312,8 +328,13 @@ class ScheduleController extends Controller
         return (int) $whole * 100 + (int) str_pad($fraction, 2, '0');
     }
 
-    public function checkout(Request $request, int $id, StockLedger $ledger)
-    {
+    public function checkout(
+        Request $request,
+        int $id,
+        StockLedger $ledger,
+        LoyaltyProgram $loyalty,
+        CheckoutFinancials $financials,
+    ) {
         $shop = $this->shop($request);
         abort_unless($request->user()->isAdmin(), 403);
         $data = $request->validate([
@@ -326,14 +347,18 @@ class ScheduleController extends Controller
             'products.*.id' => ['required', 'integer', 'distinct'],
             'products.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
             'products.*.price_cents' => ['required', 'integer', 'min:0'],
+            'confirmed_consumptions' => ['nullable', 'array', 'max:100'],
+            'confirmed_consumptions.*.service_id' => ['required', 'integer', 'min:1'],
+            'confirmed_consumptions.*.supply_id' => ['required', 'integer', 'min:1'],
             'discount_cents' => ['required', 'integer', 'min:0'],
             'payment_method' => ['required', 'in:credit_card,debit_card,pix,cash'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
         $appointment = Appointment::withoutGlobalScope(BarbershopScope::class)
             ->where('barbershop_id', $shop->id)->findOrFail($id);
+        $warnings = [];
 
-        DB::transaction(function () use ($request, $shop, $data, $appointment, $ledger) {
+        DB::transaction(function () use ($request, $shop, $data, $appointment, $ledger, $loyalty, $financials, &$warnings) {
             User::whereKey($appointment->user_id)->lockForUpdate()->firstOrFail();
             $appointment->refresh();
             abort_unless(hash_equals($this->appointmentVersion($appointment), $data['version']), 409, 'O agendamento foi alterado. Atualize o calendário.');
@@ -351,13 +376,24 @@ class ScheduleController extends Controller
                     'cash_register' => 'Abra o caixa desta unidade para finalizar atendimentos.',
                 ]);
             }
-            $services = $appointment->services()->withoutGlobalScope(BarbershopScope::class)->lockForUpdate()->get();
+            $services = $appointment->services()->withoutGlobalScope(BarbershopScope::class)
+                ->with(['supplies' => fn ($query) => $query->withoutGlobalScope(BarbershopScope::class)])
+                ->lockForUpdate()->get();
             if ($services->isEmpty()) {
-                $services = collect([$appointment->service()->withoutGlobalScope(BarbershopScope::class)->withTrashed()->lockForUpdate()->firstOrFail()]);
+                $services = collect([$appointment->service()->withoutGlobalScope(BarbershopScope::class)
+                    ->withTrashed()->with(['supplies' => fn ($query) => $query->withoutGlobalScope(BarbershopScope::class)])
+                    ->lockForUpdate()->firstOrFail()]);
             }
             $serviceItems = $services->map(fn ($service) => [
                 'id' => $service->id, 'name' => $service->name, 'duration' => $service->duration,
                 'price_cents' => $this->cents($service->price),
+                'commission_percent' => (string) $service->commission_percent,
+                'supplies' => $service->supplies->map(fn ($supply) => [
+                    'id' => $supply->id,
+                    'name' => $supply->name,
+                    'unit' => $supply->unit,
+                    'quantity' => (string) $supply->pivot->quantity,
+                ])->values()->all(),
             ])->values();
             $servicesTotal = $serviceItems->sum('price_cents');
             $expectedServices = collect($data['services'])->keyBy('id');
@@ -370,7 +406,7 @@ class ScheduleController extends Controller
             $products = Product::withoutGlobalScope(BarbershopScope::class)
                 ->where('barbershop_id', $shop->id)->whereIn('id', collect($data['products'])->pluck('id'))
                 ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
-            $productItems = collect($data['products'])->map(function ($item) use ($products) {
+            $productItems = collect($data['products'])->map(function ($item) use ($products, $ledger) {
                 $product = $products->get($item['id']);
                 if (! $product || $this->cents($product->price) !== (int) $item['price_cents']) {
                     throw ValidationException::withMessages(['products' => 'Um produto não está disponível ou teve seu preço alterado. Recarregue a página e confira os valores.']);
@@ -384,6 +420,11 @@ class ScheduleController extends Controller
                 return [
                     'id' => $product->id, 'name' => $product->name, 'brand' => $product->brand,
                     'quantity' => (int) $item['quantity'], 'price_cents' => $this->cents($product->price),
+                    'unit_cost_milli_cents' => $product->average_cost_milli_cents,
+                    'cost_total_cents' => $ledger->costForQuantity(
+                        (int) $item['quantity'] * 1000,
+                        $product->average_cost_milli_cents,
+                    ),
                 ];
             });
             $productsTotal = $productItems->sum(fn ($item) => $item['quantity'] * $item['price_cents']);
@@ -391,6 +432,135 @@ class ScheduleController extends Controller
             if ($data['discount_cents'] > $subtotal) {
                 throw ValidationException::withMessages(['discount_cents' => 'O desconto não pode superar o subtotal.']);
             }
+
+            $grossLines = $serviceItems->map(fn ($item) => [
+                'key' => 'service:'.$item['id'],
+                'gross_cents' => $item['price_cents'],
+                'type' => 'service',
+                'id' => $item['id'],
+            ])->concat($productItems->map(fn ($item) => [
+                'key' => 'product:'.$item['id'],
+                'gross_cents' => $item['quantity'] * $item['price_cents'],
+                'type' => 'product',
+                'id' => $item['id'],
+            ]))->values()->all();
+            $allocatedLines = collect($financials->allocateDiscount($grossLines, (int) $data['discount_cents']))
+                ->keyBy('key');
+
+            $commissionTotal = 0;
+            $serviceItems = $serviceItems->map(function ($item) use ($allocatedLines, $financials, &$commissionTotal) {
+                $allocated = $allocatedLines->get('service:'.$item['id']);
+                $commission = $financials->commissionCents($allocated['net_cents'], $item['commission_percent']);
+                $commissionTotal += $commission;
+
+                return [
+                    ...$item,
+                    'discount_cents' => $allocated['discount_cents'],
+                    'net_cents' => $allocated['net_cents'],
+                    'commission_cents' => $commission,
+                ];
+            })->values();
+            $productItems = $productItems->map(function ($item) use ($allocatedLines) {
+                $allocated = $allocatedLines->get('product:'.$item['id']);
+
+                return [
+                    ...$item,
+                    'discount_cents' => $allocated['discount_cents'],
+                    'net_cents' => $allocated['net_cents'],
+                ];
+            })->values();
+
+            $supplyIds = $serviceItems->flatMap(fn ($service) => collect($service['supplies'])->pluck('id'))
+                ->unique()->values();
+            $supplies = $supplyIds->isEmpty() ? collect() : Supply::withoutGlobalScope(BarbershopScope::class)
+                ->where('barbershop_id', $shop->id)->whereIn('id', $supplyIds)
+                ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $confirmedKeys = collect($data['confirmed_consumptions'] ?? [])
+                ->map(fn ($item) => $item['service_id'].':'.$item['supply_id'])->unique();
+            $validKeys = $serviceItems->flatMap(fn ($service) => collect($service['supplies'])
+                ->map(fn ($supply) => $service['id'].':'.$supply['id']))->unique();
+            if ($confirmedKeys->diff($validKeys)->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'confirmed_consumptions' => 'A composição de insumos foi alterada. Atualize o calendário.',
+                ]);
+            }
+
+            $confirmedBySupply = [];
+            $supplyCostKnown = true;
+            $supplyCostTotal = 0;
+            $serviceItems = $serviceItems->map(function ($service) use (
+                $ledger,
+                $supplies,
+                $confirmedKeys,
+                &$confirmedBySupply,
+                &$supplyCostKnown,
+                &$supplyCostTotal,
+            ) {
+                $service['supplies'] = collect($service['supplies'])->map(function ($line) use (
+                    $service,
+                    $ledger,
+                    $supplies,
+                    $confirmedKeys,
+                    &$confirmedBySupply,
+                    &$supplyCostKnown,
+                    &$supplyCostTotal,
+                ) {
+                    $supply = $supplies->get($line['id']);
+                    if (! $supply) {
+                        throw ValidationException::withMessages([
+                            'services' => 'Um insumo da composição não está mais disponível nesta unidade.',
+                        ]);
+                    }
+                    $quantity = $ledger->milliUnits($line['quantity']);
+                    $cost = $ledger->costForQuantity($quantity, $supply->average_cost_milli_cents);
+                    if ($cost === null) {
+                        $supplyCostKnown = false;
+                    } else {
+                        $supplyCostTotal += $cost;
+                    }
+                    $key = $service['id'].':'.$line['id'];
+                    $confirmed = $confirmedKeys->contains($key);
+                    if ($confirmed) {
+                        $confirmedBySupply[$line['id']]['quantity'] =
+                            ($confirmedBySupply[$line['id']]['quantity'] ?? 0) + $quantity;
+                        $confirmedBySupply[$line['id']]['keys'][] = $key;
+                    }
+
+                    return [
+                        ...$line,
+                        'unit_cost_milli_cents' => $supply->average_cost_milli_cents,
+                        'cost_total_cents' => $cost,
+                        'inventory_status' => $confirmed ? 'pending' : 'not_confirmed',
+                    ];
+                })->all();
+
+                return $service;
+            })->values();
+
+            foreach ($confirmedBySupply as $supplyId => $consumption) {
+                $supply = $supplies->get($supplyId);
+                $available = $ledger->milliUnits((string) $supply->stock_quantity);
+                $status = $available >= $consumption['quantity'] ? 'debited' : 'insufficient_stock';
+                if ($status === 'insufficient_stock') {
+                    $warnings[] = "Estoque insuficiente para {$supply->name}; a baixa foi ignorada.";
+                }
+                $serviceItems = $serviceItems->map(function ($service) use ($consumption, $status) {
+                    $service['supplies'] = array_map(function ($line) use ($service, $consumption, $status) {
+                        if (in_array($service['id'].':'.$line['id'], $consumption['keys'], true)) {
+                            $line['inventory_status'] = $status;
+                        }
+
+                        return $line;
+                    }, $service['supplies']);
+
+                    return $service;
+                });
+            }
+
+            $productCostsKnown = $productItems->every(fn ($item) => $item['cost_total_cents'] !== null);
+            $productCostTotal = $productCostsKnown
+                ? (int) $productItems->sum('cost_total_cents')
+                : null;
             $checkout = $appointment->checkout()->create([
                 'cash_register_id' => $cashRegister->id,
                 'created_by' => $request->user()->id,
@@ -398,6 +568,9 @@ class ScheduleController extends Controller
                 'services_total_cents' => $servicesTotal, 'products_total_cents' => $productsTotal,
                 'discount_cents' => $data['discount_cents'], 'total_cents' => $subtotal - $data['discount_cents'],
                 'payment_method' => $data['payment_method'],
+                'product_cost_cents' => $productCostTotal,
+                'supply_cost_cents' => $supplyCostKnown ? $supplyCostTotal : null,
+                'commission_cents' => $commissionTotal,
                 'notes' => $data['notes'] ?? null,
             ]);
             foreach ($productItems as $item) {
@@ -410,10 +583,24 @@ class ScheduleController extends Controller
                     $checkout->id,
                 );
             }
+            foreach ($confirmedBySupply as $supplyId => $consumption) {
+                $available = $ledger->milliUnits((string) $supplies->get($supplyId)->stock_quantity);
+                if ($available >= $consumption['quantity']) {
+                    $ledger->record(
+                        $supplies->get($supplyId),
+                        -$consumption['quantity'],
+                        'exit',
+                        "Consumo no atendimento #{$appointment->id}",
+                        $request->user(),
+                        $checkout->id,
+                    );
+                }
+            }
             $appointment->update(['status' => 'completed']);
+            $loyalty->award($appointment, $checkout);
         }, 3);
 
-        return response()->json(['message' => 'Atendimento finalizado.']);
+        return response()->json(['message' => 'Atendimento finalizado.', 'warnings' => $warnings]);
     }
 
     private function interval(Request $request, Barbershop $shop): array

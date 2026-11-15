@@ -2,8 +2,9 @@
 import { Head } from '@inertiajs/vue3';
 import ServiceForm from '@/components/ServiceForm.vue';
 import type { Service } from '@/types/service';
+import type { SupplyOption } from '@/types/service';
 
-defineProps<{ service: Service }>();
+defineProps<{ service: Service; supplies: SupplyOption[] }>();
 defineOptions({
     layout: {
         breadcrumbs: [
@@ -18,6 +19,6 @@ defineOptions({
     <Head title="Editar serviço" />
     <div class="max-w-xl space-y-6 p-6">
         <h1 class="text-2xl font-semibold">Editar serviço</h1>
-        <ServiceForm :service="service" />
+        <ServiceForm :service="service" :supplies="supplies" />
     </div>
 </template>

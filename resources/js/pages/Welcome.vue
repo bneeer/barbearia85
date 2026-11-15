@@ -5,6 +5,14 @@ import { useIntervalFn, usePreferredReducedMotion } from '@vueuse/core';
 import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Toaster } from '@/components/ui/sonner';
@@ -18,11 +26,23 @@ const activeSlide = ref(0);
 const reducedMotion = usePreferredReducedMotion();
 const showCancellation = ref(false);
 const cancellationForm = useForm({ email: '' });
+const portalForm = useForm({ email: '' });
+const showPortal = ref(false);
 
 function requestCancellation() {
     cancellationForm.post('/cancelar-agendamento', {
         preserveScroll: true,
         onSuccess: () => cancellationForm.reset(),
+    });
+}
+
+function requestPortal() {
+    portalForm.post('/area-do-cliente', {
+        preserveScroll: true,
+        onSuccess: () => {
+            portalForm.reset();
+            showPortal.value = false;
+        },
     });
 }
 
@@ -119,6 +139,53 @@ useIntervalFn(() => {
                 >
                     Cancelar um agendamento
                 </button>
+                <Dialog v-model:open="showPortal">
+                    <DialogTrigger as-child>
+                        <button
+                            type="button"
+                            class="rounded px-4 py-2 text-sm text-white underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-primary"
+                        >
+                            Consultar meus agendamentos
+                        </button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Consultar agendamentos</DialogTitle>
+                            <DialogDescription>
+                                Informe o e-mail usado nos agendamentos. O link
+                                de acesso é válido por uma hora.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <form class="space-y-4" @submit.prevent="requestPortal">
+                            <Label for="portal-email">E-mail</Label>
+                            <Input
+                                id="portal-email"
+                                v-model="portalForm.email"
+                                type="email"
+                                autocomplete="email"
+                                maxlength="255"
+                                required
+                                :aria-invalid="!!portalForm.errors.email"
+                                aria-describedby="portal-email-error"
+                            />
+                            <InputError
+                                id="portal-email-error"
+                                :message="portalForm.errors.email"
+                            />
+                            <Button
+                                type="submit"
+                                class="w-full"
+                                :disabled="portalForm.processing"
+                            >
+                                {{
+                                    portalForm.processing
+                                        ? 'Solicitando...'
+                                        : 'Enviar link de acesso'
+                                }}
+                            </Button>
+                        </form>
+                    </DialogContent>
+                </Dialog>
                 <form
                     v-if="showCancellation"
                     id="cancellation-request"

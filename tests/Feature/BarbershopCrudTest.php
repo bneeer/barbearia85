@@ -134,6 +134,67 @@ class BarbershopCrudTest extends TestCase
             ->where('barbershop.no_show_tolerance_minutes', 0));
     }
 
+    public function test_admin_can_enable_configure_pause_and_reenable_unit_loyalty(): void
+    {
+        $shop = $this->barbershop('Fidelidade');
+        $otherShop = $this->barbershop('Outra unidade');
+        $this->actingAs(User::factory()->create(['role' => 'admin']));
+
+        $this->put("/barbershops/$shop->id", $this->data([
+            'loyalty_enabled' => true,
+            'loyalty_stamp_goal' => 7,
+            'loyalty_reward_description' => 'Um corte grátis',
+        ]))->assertSessionHasNoErrors();
+
+        $shop->refresh();
+        $this->assertTrue($shop->loyalty_enabled);
+        $this->assertSame(7, $shop->loyalty_stamp_goal);
+        $this->assertSame('Um corte grátis', $shop->loyalty_reward_description);
+        $firstActivation = $shop->loyalty_enabled_at;
+        $this->assertNotNull($firstActivation);
+
+        $this->travel(1)->minutes();
+        $this->put("/barbershops/$shop->id", $this->data([
+            'loyalty_enabled' => false,
+            'loyalty_stamp_goal' => 3,
+            'loyalty_reward_description' => 'Uma barba grátis',
+        ]))->assertSessionHasNoErrors();
+        $this->assertFalse($shop->fresh()->loyalty_enabled);
+        $this->assertTrue($shop->fresh()->loyalty_enabled_at->equalTo($firstActivation));
+
+        $this->travel(1)->minutes();
+        $this->put("/barbershops/$shop->id", $this->data([
+            'loyalty_enabled' => true,
+            'loyalty_stamp_goal' => 3,
+            'loyalty_reward_description' => 'Uma barba grátis',
+        ]))->assertSessionHasNoErrors();
+        $this->assertTrue($shop->fresh()->loyalty_enabled_at->gt($firstActivation));
+        $this->assertFalse($otherShop->fresh()->loyalty_enabled);
+    }
+
+    public function test_loyalty_requires_a_reward_description_and_is_admin_only(): void
+    {
+        $shop = $this->barbershop('Fidelidade');
+        $barber = User::factory()->create(['role' => 'barber']);
+        $this->actingAs($barber)->put("/barbershops/$shop->id", $this->data([
+            'loyalty_enabled' => true,
+            'loyalty_stamp_goal' => 5,
+            'loyalty_reward_description' => 'Corte grátis',
+        ]))->assertForbidden();
+
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->put("/barbershops/$shop->id", $this->data([
+                'loyalty_enabled' => true,
+                'loyalty_stamp_goal' => 5,
+                'loyalty_reward_description' => '',
+            ]))->assertSessionHasErrors('loyalty_reward_description');
+        $this->put("/barbershops/$shop->id", $this->data([
+            'loyalty_enabled' => true,
+            'loyalty_stamp_goal' => 0,
+            'loyalty_reward_description' => 'Corte grátis',
+        ]))->assertSessionHasErrors('loyalty_stamp_goal');
+    }
+
     public function test_barber_crud_keeps_unit_assignments_in_sync(): void
     {
         $primary = $this->barbershop('Principal');

@@ -134,19 +134,37 @@ const exportUrl = computed(() => {
     return `/dashboard/export?${query}`;
 });
 
+const financeUrl = computed(() => {
+    const query = new URLSearchParams();
+
+    if (props.summary?.from) {
+        query.set('from', props.summary.from);
+    }
+
+    if (props.summary?.to) {
+        query.set('to', props.summary.to);
+    }
+
+    if (props.filters?.barbershop_id) {
+        query.set('barbershop_id', String(props.filters.barbershop_id));
+    }
+
+    return `/finance?${query}`;
+});
+
 defineOptions({
     layout: { breadcrumbs: [{ title: 'Início', href: dashboard() }] },
 });
 </script>
 
 <template>
-    <Head title="Início" />
+    <Head title="Painel Geral" />
     <div class="min-w-0 space-y-6 p-4 md:p-6">
         <div class="flex flex-wrap items-center justify-between gap-4">
             <h1 class="text-2xl font-semibold">
                 {{
                     isAdmin
-                        ? 'Painel de Controle'
+                        ? 'Painel Geral'
                         : isBarber
                           ? 'Meus atendimentos'
                           : 'Bem-vindo à Barbearia 85'
@@ -260,6 +278,24 @@ defineOptions({
             :range-from="summary.from"
             :range-to="summary.to"
         />
+        <section
+            v-if="isAdmin && showFinancials && summary"
+            class="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+            aria-label="Relatório financeiro detalhado"
+        >
+            <p class="text-sm text-muted-foreground">
+                Consulte despesas, custos, salários e lucro estimado por
+                competência no Financeiro. O relatório detalhado é por unidade;
+                quando o painel mostra todas as unidades, será aberta a unidade
+                padrão do administrador.
+            </p>
+            <a
+                :href="financeUrl"
+                class="inline-flex h-10 shrink-0 items-center justify-center rounded-md border px-4 text-sm font-medium hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+            >
+                Abrir gestão financeira
+            </a>
+        </section>
         <div
             v-if="isAdmin && summary"
             class="grid min-w-0 gap-6"

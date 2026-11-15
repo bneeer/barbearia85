@@ -29,10 +29,18 @@ type CurrentRegister = {
     opened_by: string;
     opening_amount_cents: number;
     sales_cents: Amounts;
+    expense_payments_cents: Amounts;
     expected_cents: Amounts;
     checkout_count: number;
     withdrawals_total_cents: number;
     withdrawals: Withdrawal[];
+    expense_payments: {
+        amount_cents: number;
+        payment_method: Method;
+        expense_title: string;
+        user: string;
+        paid_at: string;
+    }[];
 };
 type ClosedRegister = {
     id: number;
@@ -46,6 +54,7 @@ type ClosedRegister = {
         counted: Amounts;
         difference: Amounts;
     };
+    expense_payments_cents: Amounts;
     closing_note: string | null;
     withdrawals: Omit<Withdrawal, 'id'>[];
 };
@@ -70,6 +79,17 @@ const selectedTimezone = computed(
             (barbershop) => barbershop.id === props.selectedBarbershopId,
         )?.timezone ?? 'America/Sao_Paulo',
 );
+const expensePaymentsTotal = computed(() => {
+    const register = props.current;
+
+    return register
+        ? methods.reduce(
+              (sum, method) =>
+                  sum + register.expense_payments_cents[method.key],
+              0,
+          )
+        : 0;
+});
 const openForm = useForm({
     barbershop_id: props.selectedBarbershopId ?? 0,
     opening_amount: '0.00',
@@ -265,6 +285,16 @@ function submitClose() {
                                     }}
                                 </p>
                                 <p class="text-xs text-muted-foreground">
+                                    Despesas:
+                                    {{
+                                        formatMoney(
+                                            current.expense_payments_cents[
+                                                method.key
+                                            ],
+                                        )
+                                    }}
+                                </p>
+                                <p class="text-xs text-muted-foreground">
                                     Esperado:
                                     {{
                                         formatMoney(
@@ -283,6 +313,14 @@ function submitClose() {
                                             current.withdrawals_total_cents,
                                         )
                                     }}
+                                </p>
+                            </div>
+                            <div class="rounded-md border p-3">
+                                <p class="text-sm text-muted-foreground">
+                                    Pagamentos de despesas pelo caixa
+                                </p>
+                                <p class="text-lg font-semibold">
+                                    {{ formatMoney(expensePaymentsTotal) }}
                                 </p>
                             </div>
                         </div>

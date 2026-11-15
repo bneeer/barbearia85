@@ -21,6 +21,10 @@ class Barbershop extends Model
         'is_open',
         'cancellation_notice_hours',
         'no_show_tolerance_minutes',
+        'loyalty_enabled',
+        'loyalty_stamp_goal',
+        'loyalty_reward_description',
+        'loyalty_enabled_at',
     ];
 
     protected function casts(): array
@@ -31,6 +35,9 @@ class Barbershop extends Model
             'is_open' => 'boolean',
             'cancellation_notice_hours' => 'integer',
             'no_show_tolerance_minutes' => 'integer',
+            'loyalty_enabled' => 'boolean',
+            'loyalty_stamp_goal' => 'integer',
+            'loyalty_enabled_at' => 'immutable_datetime',
         ];
     }
 
@@ -72,5 +79,20 @@ class Barbershop extends Model
     public function photos()
     {
         return $this->hasMany(BarbershopPhoto::class);
+    }
+
+    public function loyaltyAccounts()
+    {
+        return $this->hasMany(LoyaltyAccount::class);
+    }
+
+    public function expenses()
+    {
+        return $this->hasMany(Expense::class);
+    }
+
+    public function expenseRecurrences()
+    {
+        return $this->hasMany(ExpenseRecurrence::class);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Mail\NotificationEmail;
 use App\Models\Appointment;
+use App\Models\ClientPortalGrant;
 use App\Models\Notification;
 use App\Models\NotificationAttempt;
 use App\Models\User;
@@ -95,6 +96,10 @@ class EmailDelivery
     {
         if ($record->expires_at?->lte(now(new \DateTimeZone('America/Sao_Paulo')))) {
             return 'expired';
+        }
+        if ($record->template === 'client_portal_access'
+            && ! ClientPortalGrant::where('notification_id', $record->id)->where('expires_at', '>', now())->exists()) {
+            return 'superseded';
         }
         if ($record->appointment_id) {
             $appointment = Appointment::withoutGlobalScopes()->find($record->appointment_id);

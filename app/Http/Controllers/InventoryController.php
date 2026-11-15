@@ -14,6 +14,14 @@ use Inertia\Inertia;
 
 class InventoryController extends Controller
 {
+    private function cents(string|int|float $amount): int
+    {
+        $amount = str_replace(',', '.', (string) $amount);
+        [$whole, $fraction] = array_pad(explode('.', $amount, 2), 2, '0');
+
+        return (int) $whole * 100 + (int) str_pad($fraction, 2, '0');
+    }
+
     private function authorizeAdmin(Request $request): int
     {
         abort_unless($request->user()->isAdmin() && $request->user()->barbershop_id, 403);
@@ -24,9 +32,9 @@ class InventoryController extends Controller
     private function itemsQuery(int $barbershopId)
     {
         $products = Product::query()->where('barbershop_id', $barbershopId)
-            ->selectRaw("id, name, brand, description, price, stock_quantity, min_stock, NULL as unit, 'product' as type");
+            ->selectRaw("id, name, brand, description, price, stock_quantity, min_stock, average_cost_milli_cents, NULL as unit, 'product' as type");
         $supplies = Supply::query()->where('barbershop_id', $barbershopId)
-            ->selectRaw("id, name, COALESCE(brand, '') as brand, description, NULL as price, stock_quantity, min_stock, unit, 'supply' as type");
+            ->selectRaw("id, name, COALESCE(brand, '') as brand, description, NULL as price, stock_quantity, min_stock, average_cost_milli_cents, unit, 'supply' as type");
 
         return DB::query()->fromSub($products->unionAll($supplies), 'inventory_items');
     }
@@ -72,6 +80,7 @@ class InventoryController extends Controller
                 ->through(fn (StockMovement $movement) => [
                     'id' => $movement->id,
                     'type' => $movement->type,
+                    'cost_total_cents' => $movement->cost_total_cents,
                     'quantity' => $movement->quantity,
                     'balance_after' => $movement->balance_after,
                     'reason' => $movement->reason,
@@ -148,6 +157,7 @@ class InventoryController extends Controller
             'type' => ['required', Rule::in(['entry', 'exit', 'adjustment'])],
             'quantity' => ['required', 'numeric', 'min:0', 'max:999999999.999', 'regex:/^\d+(\.\d{1,3})?$/'],
             'reason' => ['required', 'string', 'max:255'],
+            'total_cost' => ['required_if:type,entry', 'nullable', 'regex:/^\d{1,9}([,.]\d{1,2})?$/'],
         ]);
 
         DB::transaction(function () use ($barbershopId, $data, $ledger, $request) {
@@ -180,6 +190,8 @@ class InventoryController extends Controller
                 $data['type'],
                 $data['reason'],
                 $request->user(),
+                null,
+                $data['type'] === 'entry' ? $this->cents($data['total_cost']) : null,
             );
         });
 

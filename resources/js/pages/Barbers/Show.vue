@@ -57,7 +57,15 @@ defineOptions({
                     v-for="barbershop in barber.barbershops"
                     :key="barbershop.id"
                 >
-                    {{ barbershop.name }}
+                    {{ barbershop.name }} · salário base mensal:
+                    {{
+                        new Intl.NumberFormat('pt-BR', {
+                            style: 'currency',
+                            currency: 'BRL',
+                        }).format(
+                            (barbershop.pivot?.salary_base_cents ?? 0) / 100,
+                        )
+                    }}
                 </dd>
             </div>
             <div>
