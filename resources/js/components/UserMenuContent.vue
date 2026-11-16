@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { LogOut, Settings } from '@iconoir/vue';
 import { Link, router } from '@inertiajs/vue3';
+import { CircleHelp } from 'lucide-vue-next';
 import {
     DropdownMenuGroup,
     DropdownMenuItem,
@@ -35,6 +36,12 @@ defineProps<Props>();
             <Link class="block w-full cursor-pointer" :href="edit()" prefetch>
                 <Settings aria-hidden="true" class="mr-2 h-4 w-4" />
                 Configurações
+            </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem :as-child="true">
+            <Link class="block w-full cursor-pointer" href="/help" prefetch>
+                <CircleHelp aria-hidden="true" class="mr-2 h-4 w-4" />
+                Ajuda
             </Link>
         </DropdownMenuItem>
     </DropdownMenuGroup>

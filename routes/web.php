@@ -9,6 +9,7 @@ use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientPortalController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FinanceController;
+use App\Http\Controllers\HelpController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PrivacyRequestController;
@@ -65,6 +66,7 @@ Route::get('api/barbershops/{barbershop:slug}/gallery', [BarbershopController::c
     ->name('barbershops.gallery');
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('help', [HelpController::class, 'index'])->name('help.index');
     Route::get('clients', [ClientController::class, 'index'])->name('clients.index');
     Route::get('clients/{id}', [ClientController::class, 'show'])->whereNumber('id')->name('clients.show');
     Route::post('clients/{id}/loyalty/redeem', [ClientController::class, 'redeemLoyalty'])

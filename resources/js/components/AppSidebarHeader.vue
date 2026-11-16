@@ -1,7 +1,16 @@
 <script setup lang="ts">
+import { Moon, Sun } from 'lucide-vue-next';
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
+import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { useAppearance } from '@/composables/useAppearance';
 import type { BreadcrumbItem } from '@/types';
+
+const { resolvedAppearance, updateAppearance } = useAppearance();
+
+function toggleAppearance() {
+    updateAppearance(resolvedAppearance.value === 'dark' ? 'light' : 'dark');
+}
 
 withDefaults(
     defineProps<{
@@ -23,5 +32,30 @@ withDefaults(
                 <Breadcrumbs :breadcrumbs="breadcrumbs" />
             </template>
         </div>
+        <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            class="ml-auto"
+            :aria-label="
+                resolvedAppearance === 'dark'
+                    ? 'Ativar modo claro'
+                    : 'Ativar modo escuro'
+            "
+            :title="
+                resolvedAppearance === 'dark'
+                    ? 'Ativar modo claro'
+                    : 'Ativar modo escuro'
+            "
+            :aria-pressed="resolvedAppearance === 'dark'"
+            @click="toggleAppearance"
+        >
+            <Sun
+                v-if="resolvedAppearance === 'dark'"
+                aria-hidden="true"
+                class="size-5"
+            />
+            <Moon v-else aria-hidden="true" class="size-5" />
+        </Button>
     </header>
 </template>
