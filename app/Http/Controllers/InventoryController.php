@@ -7,6 +7,7 @@ use App\Models\StockMovement;
 use App\Models\Supply;
 use App\Services\StockLedger;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -14,14 +15,6 @@ use Inertia\Inertia;
 
 class InventoryController extends Controller
 {
-    private function cents(string|int|float $amount): int
-    {
-        $amount = str_replace(',', '.', (string) $amount);
-        [$whole, $fraction] = array_pad(explode('.', $amount, 2), 2, '0');
-
-        return (int) $whole * 100 + (int) str_pad($fraction, 2, '0');
-    }
-
     private function authorizeAdmin(Request $request): int
     {
         abort_unless($request->user()->isAdmin() && $request->user()->barbershop_id, 403);
@@ -47,6 +40,17 @@ class InventoryController extends Controller
             'type' => ['nullable', Rule::in(['product', 'supply'])],
             'status' => ['nullable', Rule::in(['all', 'low', 'out', 'available'])],
         ]);
+        $dialog = $request->validate([
+            'action' => ['nullable', Rule::in(['create', 'edit', 'show'])],
+            'item_type' => ['required_with:action', Rule::in(['product', 'supply'])],
+            'item_id' => ['required_if:action,edit,show', 'nullable', 'integer', 'min:1'],
+        ]);
+        $dialogItem = null;
+        if (in_array($dialog['action'] ?? null, ['edit', 'show'], true)) {
+            $dialogItem = $this->itemsQuery($barbershopId)
+                ->where('type', $dialog['item_type'])->where('id', $dialog['item_id'])->first();
+            abort_unless($dialogItem, 404);
+        }
         $query = $this->itemsQuery($barbershopId)
             ->when(($filters['search'] ?? '') !== '', fn ($query) => $query->where(function ($query) use ($filters) {
                 $query->where('name', 'like', '%'.$filters['search'].'%')
@@ -61,6 +65,11 @@ class InventoryController extends Controller
         $supplies = Supply::query()->where('barbershop_id', $barbershopId);
 
         return Inertia::render('Inventory/Index', [
+            'dialog' => [
+                'action' => $dialog['action'] ?? null,
+                'item_type' => $dialog['item_type'] ?? null,
+                'item' => $dialogItem,
+            ],
             'items' => $query->paginate(15)->withQueryString(),
             'filters' => [
                 'search' => $filters['search'] ?? '',
@@ -101,6 +110,7 @@ class InventoryController extends Controller
             'description' => ['nullable', 'string', 'max:5000'],
             'unit' => ['required', Rule::in(['un', 'ml', 'g', 'L', 'kg'])],
             'min_stock' => ['required', 'numeric', 'min:0', 'max:999999999.999', 'regex:/^\d+(\.\d{1,3})?$/'],
+            ...$ledger->initialEntryRules(),
         ]);
         if ($data['unit'] === 'un' && $ledger->milliUnits($data['min_stock']) % 1000 !== 0) {
             throw ValidationException::withMessages([
@@ -108,11 +118,14 @@ class InventoryController extends Controller
             ]);
         }
 
-        Supply::create([
-            ...$data,
-            'barbershop_id' => $barbershopId,
-            'stock_quantity' => 0,
-        ]);
+        DB::transaction(function () use ($data, $barbershopId, $ledger, $request) {
+            $supply = Supply::create([
+                ...Arr::except($data, ['initial_entry', 'initial_quantity', 'initial_total_cost']),
+                'barbershop_id' => $barbershopId,
+                'stock_quantity' => 0,
+            ]);
+            $ledger->recordInitialEntry($supply, $data, $request->user());
+        });
 
         return back()->with('success', 'Insumo cadastrado.');
     }
@@ -191,10 +204,32 @@ class InventoryController extends Controller
                 $data['reason'],
                 $request->user(),
                 null,
-                $data['type'] === 'entry' ? $this->cents($data['total_cost']) : null,
+                $data['type'] === 'entry' ? $ledger->cents($data['total_cost']) : null,
             );
         });
 
         return back()->with('success', 'Movimentação registrada.');
+    }
+
+    public function destroySupply(Request $request, int $id)
+    {
+        $barbershopId = $this->authorizeAdmin($request);
+        DB::transaction(function () use ($barbershopId, $id) {
+            $supply = Supply::query()->where('barbershop_id', $barbershopId)
+                ->lockForUpdate()->findOrFail($id);
+            if ((float) $supply->stock_quantity > 0) {
+                throw ValidationException::withMessages([
+                    'archive' => 'Zere o saldo por movimentação antes de arquivar o insumo.',
+                ]);
+            }
+            if ($supply->services()->where('is_active', true)->exists()) {
+                throw ValidationException::withMessages([
+                    'archive' => 'Remova o vínculo com serviços ativos antes de arquivar o insumo.',
+                ]);
+            }
+            $supply->delete();
+        });
+
+        return back(fallback: route('inventory.index'))->with('success', 'Insumo arquivado.');
     }
 }

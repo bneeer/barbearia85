@@ -45,41 +45,41 @@ class ProductCrudTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin', 'barbershop_id' => $shop->id]);
         $this->actingAs($admin);
 
-        $this->get('/products/create')->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->component('Products/Create'));
-        $this->post('/products', $this->data(['barbershop_id' => $other->id]))->assertRedirect('/products');
+        $this->get('/products/create')->assertRedirect(route('inventory.index', ['action' => 'create', 'item_type' => 'product']));
+        $this->from('/inventory')->post('/products', $this->data(['barbershop_id' => $other->id]))->assertRedirect('/inventory');
         $this->assertDatabaseHas('products', ['barbershop_id' => $shop->id, ...$this->data()]);
         $id = DB::table('products')->value('id');
 
-        $this->get("/products/$id")->assertOk()->assertInertia(fn (Assert $page) => $page
-            ->component('Products/Show')->where('product.name', 'Pomada')
-            ->where('product.brand', 'Marca A')->where('product.price', '35.50')
-            ->where('product.description', 'Pomada modeladora para cabelo'));
-        $this->get("/products/$id/edit")->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->component('Products/Edit')->where('product.id', $id));
+        $this->get("/products/$id")->assertRedirect(route('inventory.index', ['action' => 'show', 'item_type' => 'product', 'item_id' => $id]));
+        $this->get("/products/$id/edit")->assertRedirect(route('inventory.index', ['action' => 'edit', 'item_type' => 'product', 'item_id' => $id]));
+        $this->get("/inventory?action=edit&item_type=product&item_id=$id")->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Inventory/Index')
+                ->where('dialog.item.id', $id)->where('dialog.item.name', 'Pomada')
+                ->where('dialog.item.brand', 'Marca A')
+                ->where('dialog.item.description', 'Pomada modeladora para cabelo'));
         $updated = $this->data([
             'name' => 'Óleo para barba',
             'brand' => 'Marca B',
             'description' => 'Óleo hidratante',
             'price' => '42.90',
         ]);
-        $this->put("/products/$id", [...$updated, 'barbershop_id' => $other->id])->assertRedirect('/products');
+        $this->from('/inventory')->put("/products/$id", [...$updated, 'barbershop_id' => $other->id])->assertRedirect('/inventory');
         $this->assertDatabaseHas('products', ['id' => $id, 'barbershop_id' => $shop->id, ...$updated]);
 
-        $this->delete("/products/$id")->assertRedirect('/products');
+        $this->from('/inventory')->delete("/products/$id")->assertRedirect('/inventory');
         $this->assertSoftDeleted('products', ['id' => $id]);
         $this->get("/products/$id")->assertNotFound();
         $this->get("/products/$id/edit")->assertNotFound();
         $this->put("/products/$id", $this->data())->assertNotFound();
         $this->delete("/products/$id")->assertNotFound();
-        $this->get('/products')->assertInertia(fn (Assert $page) => $page->where('products.total', 0));
+        $this->get('/inventory?type=product')->assertInertia(fn (Assert $page) => $page->where('items.total', 0));
     }
 
     public function test_list_searches_name_and_brand_and_paginates_only_products_from_the_admins_shop(): void
     {
         $shop = $this->shop('principal');
         $other = $this->shop('outra');
-        for ($i = 0; $i < 11; $i++) {
+        for ($i = 0; $i < 16; $i++) {
             $this->product($shop->id);
         }
         $this->product($other->id);
@@ -87,17 +87,19 @@ class ProductCrudTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin', 'barbershop_id' => $shop->id]);
         $this->actingAs($admin);
 
-        $this->get('/products?search=Pomada')->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->component('Products/Index')
-                ->where('products.total', 11)->has('products.data', 10)->where('filters.search', 'Pomada'));
-        $this->get('/products?search=Pomada&page=2')->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->has('products.data', 1));
-        $this->get('/products?search=Marca%20A')->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->where('products.total', 11));
-        $this->get('/products?search=inexistente')->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->where('products.total', 0));
-        $this->get('/products')->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->where('products.total', 12)->where('filters.search', ''));
+        $this->get('/products?search=Pomada&page=2')
+            ->assertRedirect(route('inventory.index', ['type' => 'product', 'search' => 'Pomada', 'page' => 2]));
+        $this->get('/inventory?type=product&search=Pomada')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Inventory/Index')
+                ->where('items.total', 16)->has('items.data', 15)->where('filters.search', 'Pomada'));
+        $this->get('/inventory?type=product&search=Pomada&page=2')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->has('items.data', 1));
+        $this->get('/inventory?type=product&search=Marca%20A')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('items.total', 16));
+        $this->get('/inventory?type=product&search=inexistente')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('items.total', 0));
+        $this->get('/inventory?type=product')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('items.total', 17)->where('filters.search', ''));
     }
 
     public function test_admin_cannot_access_or_modify_another_shops_product(): void
@@ -112,6 +114,7 @@ class ProductCrudTest extends TestCase
         $this->get("/products/$id/edit")->assertNotFound();
         $this->put("/products/$id", $this->data())->assertNotFound();
         $this->delete("/products/$id")->assertNotFound();
+        $this->get("/inventory?action=edit&item_type=product&item_id=$id")->assertNotFound();
         $this->assertDatabaseHas('products', ['id' => $id, 'name' => 'Pomada', 'deleted_at' => null]);
     }
 
@@ -182,8 +185,58 @@ class ProductCrudTest extends TestCase
         $this->actingAs($admin);
 
         foreach (['0', '99999999.99'] as $price) {
-            $this->post('/products', $this->data(['price' => $price]))->assertRedirect('/products')->assertSessionHasNoErrors();
+            $this->from('/inventory')->post('/products', $this->data(['price' => $price]))->assertRedirect('/inventory')->assertSessionHasNoErrors();
             $this->assertDatabaseHas('products', ['barbershop_id' => $shop->id, 'price' => $price]);
         }
+    }
+
+    public function test_initial_entry_is_atomic_and_editing_cannot_change_stock_or_cost(): void
+    {
+        $shop = $this->shop('principal');
+        $admin = User::factory()->create(['role' => 'admin', 'barbershop_id' => $shop->id]);
+        $this->actingAs($admin)->from('/inventory?type=product&search=Pomada')->post('/products', $this->data([
+            'initial_entry' => true, 'initial_quantity' => '2', 'initial_total_cost' => '20.00',
+        ]))->assertRedirect('/inventory?type=product&search=Pomada');
+        $id = DB::table('products')->value('id');
+        $this->assertDatabaseHas('products', ['id' => $id, 'stock_quantity' => 2, 'average_cost_milli_cents' => 1000000]);
+        $this->assertDatabaseHas('stock_movements', [
+            'stockable_id' => $id, 'type' => 'entry', 'quantity' => '2.000',
+            'cost_total_cents' => 2000, 'reason' => 'Entrada inicial no cadastro', 'user_id' => $admin->id,
+        ]);
+        $this->put("/products/$id", $this->data([
+            'stock_quantity' => 99, 'average_cost_milli_cents' => 1,
+            'initial_entry' => true, 'initial_quantity' => '100', 'initial_total_cost' => '0',
+        ]))->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('products', ['id' => $id, 'stock_quantity' => 2, 'average_cost_milli_cents' => 1000000]);
+        foreach ([
+            ['initial_quantity' => '1.5', 'initial_total_cost' => '10'],
+            ['initial_quantity' => '0', 'initial_total_cost' => '10'],
+            ['initial_quantity' => '1'],
+            ['initial_quantity' => '1', 'initial_total_cost' => '-1'],
+        ] as $entry) {
+            $this->postJson('/products', $this->data(['initial_entry' => true, ...$entry]))->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('products', 1);
+        $this->assertDatabaseCount('stock_movements', 1);
+    }
+
+    public function test_archiving_product_requires_zero_stock_and_preserves_ledger(): void
+    {
+        $shop = $this->shop('principal');
+        $admin = User::factory()->create(['role' => 'admin', 'barbershop_id' => $shop->id]);
+        $this->actingAs($admin)->post('/products', $this->data([
+            'initial_entry' => true, 'initial_quantity' => '1', 'initial_total_cost' => '10',
+        ]));
+        $id = DB::table('products')->value('id');
+        $this->deleteJson("/products/$id")->assertUnprocessable()->assertJsonValidationErrors('archive');
+        $this->assertDatabaseHas('products', ['id' => $id, 'deleted_at' => null]);
+        $this->post('/inventory/movements', [
+            'item_type' => 'product', 'item_id' => $id, 'type' => 'exit', 'quantity' => '1', 'reason' => 'Baixa',
+        ])->assertSessionHasNoErrors();
+        $this->from('/inventory')->delete("/products/$id")->assertRedirect('/inventory');
+        $this->assertSoftDeleted('products', ['id' => $id]);
+        $this->assertDatabaseCount('stock_movements', 2);
+        $this->get('/inventory?type=product')->assertInertia(fn (Assert $page) => $page
+            ->where('items.total', 0)->where('movements.total', 2));
     }
 }

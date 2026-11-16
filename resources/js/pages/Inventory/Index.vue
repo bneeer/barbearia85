@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { EditPencil, Plus, Search } from '@iconoir/vue';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { Boxes, Package, TrendingDown, TriangleAlert } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
+import InitialStockFields from '@/components/InitialStockFields.vue';
 import InputError from '@/components/InputError.vue';
+import ProductForm from '@/components/ProductForm.vue';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -15,6 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { Product } from '@/types/product';
 
 type Item = {
     id: number;
@@ -60,12 +63,26 @@ const props = defineProps<{
     };
     filters: { search: string; type: string; status: string };
     counts: { products: number; supplies: number; low_stock: number };
+    dialog: {
+        action: 'create' | 'edit' | 'show' | null;
+        item_type: 'product' | 'supply' | null;
+        item: Item | null;
+    };
 }>();
 
+const page = usePage();
 const search = ref(props.filters.search);
 const typeFilter = ref(props.filters.type);
 const statusFilter = ref(props.filters.status);
 const supplyOpen = ref(false);
+const productOpen = ref(false);
+const detailsOpen = ref(false);
+const archiveOpen = ref(false);
+const editingProduct = ref<Product>();
+const detailItem = ref<Item | null>(null);
+const archiveItem = ref<Item | null>(null);
+const archiveForm = useForm({});
+const archiveError = ref('');
 const movementOpen = ref(false);
 const editingSupplyId = ref<number | null>(null);
 const selectedItem = ref<Item | null>(null);
@@ -75,6 +92,9 @@ const supplyForm = useForm({
     description: '',
     unit: 'un',
     min_stock: '0',
+    initial_entry: false,
+    initial_quantity: '1',
+    initial_total_cost: '',
 });
 const movementForm = useForm({
     item_type: 'product' as 'product' | 'supply',
@@ -147,8 +167,106 @@ function openSupply(item?: Item) {
     supplyForm.description = item?.description ?? '';
     supplyForm.unit = item?.unit ?? 'un';
     supplyForm.min_stock = String(item?.min_stock ?? '0');
+    supplyForm.initial_entry = false;
+    supplyForm.initial_quantity = '1';
+    supplyForm.initial_total_cost = '';
     supplyOpen.value = true;
 }
+
+function openProduct(item?: Item) {
+    editingProduct.value = item
+        ? {
+              id: item.id,
+              name: item.name,
+              brand: item.brand,
+              description: item.description ?? '',
+              price: item.price ?? '',
+              stock_quantity: Number(item.stock_quantity),
+              min_stock: Number(item.min_stock),
+          }
+        : undefined;
+    productOpen.value = true;
+}
+
+function openDetails(item: Item) {
+    detailItem.value = item;
+    detailsOpen.value = true;
+}
+
+function openArchive(item: Item) {
+    archiveItem.value = item;
+    archiveError.value = '';
+    archiveOpen.value = true;
+}
+
+function submitArchive() {
+    const item = archiveItem.value;
+
+    if (!item) {
+        return;
+    }
+
+    archiveForm.delete(
+        item.type === 'product'
+            ? `/products/${item.id}`
+            : `/inventory/supplies/${item.id}`,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                archiveOpen.value = false;
+                detailsOpen.value = false;
+            },
+            onError: (errors) => {
+                archiveError.value =
+                    errors.archive ?? Object.values(errors).join(' ');
+            },
+        },
+    );
+}
+
+watch(
+    () => props.dialog,
+    (dialog) => {
+        if (dialog.action === 'create') {
+            if (dialog.item_type === 'product') {
+                openProduct();
+            } else {
+                openSupply();
+            }
+        } else if (dialog.item) {
+            if (dialog.action === 'show') {
+                openDetails(dialog.item);
+            } else if (dialog.item.type === 'product') {
+                openProduct(dialog.item);
+            } else {
+                openSupply(dialog.item);
+            }
+        }
+    },
+    { immediate: true, once: true },
+);
+
+watch([productOpen, supplyOpen, detailsOpen], ([product, supply, details]) => {
+    if (product || supply || details) {
+        return;
+    }
+
+    const url = new URL(page.url, window.location.origin);
+
+    if (!url.searchParams.has('action')) {
+        return;
+    }
+
+    for (const key of ['action', 'item_type', 'item_id']) {
+        url.searchParams.delete(key);
+    }
+
+    router.get(
+        `${url.pathname}${url.search}`,
+        {},
+        { preserveState: true, preserveScroll: true, replace: true },
+    );
+});
 
 function submitSupply() {
     const options = {
@@ -225,9 +343,14 @@ function movementQuantity(movement: Movement) {
                     Controle produtos comercializáveis, insumos e movimentações.
                 </p>
             </div>
-            <Button @click="openSupply()">
-                <Plus aria-hidden="true" />Cadastrar insumo
-            </Button>
+            <div class="flex flex-wrap gap-2">
+                <Button @click="openProduct()">
+                    <Plus aria-hidden="true" />Cadastrar produto
+                </Button>
+                <Button variant="outline" @click="openSupply()">
+                    <Plus aria-hidden="true" />Cadastrar insumo
+                </Button>
+            </div>
         </div>
 
         <div class="grid gap-3 sm:grid-cols-3">
@@ -269,8 +392,8 @@ function movementQuantity(movement: Movement) {
             <div>
                 <h2 class="text-lg font-semibold">Itens de estoque</h2>
                 <p class="text-sm text-muted-foreground">
-                    Produtos existentes começam com saldo zero; registre uma
-                    entrada para disponibilizar vendas.
+                    Cadastre produtos e insumos aqui. Registre entradas com
+                    custo para disponibilizar saldo e calcular o custo médio.
                 </p>
             </div>
             <form class="flex flex-wrap gap-2" @submit.prevent="filter">
@@ -314,7 +437,8 @@ function movementQuantity(movement: Movement) {
                         <tr>
                             <th class="p-4">Item</th>
                             <th class="p-4">Tipo</th>
-                            <th class="p-4">Preço</th>
+                            <th class="p-4">Preço de venda</th>
+                            <th class="p-4">Custo médio / unidade</th>
                             <th class="p-4">Saldo</th>
                             <th class="p-4">Mínimo</th>
                             <th class="p-4">Situação</th>
@@ -329,6 +453,8 @@ function movementQuantity(movement: Movement) {
                         >
                             <td class="p-4">
                                 <p class="font-medium">{{ item.name }}</p>
+                            </td>
+                            <td class="p-4">
                                 <p
                                     v-if="item.brand"
                                     class="text-muted-foreground"
@@ -357,7 +483,6 @@ function movementQuantity(movement: Movement) {
                                     "
                                     class="text-xs text-muted-foreground"
                                 >
-                                    Custo médio:
                                     {{
                                         currencyFormat.format(
                                             item.average_cost_milli_cents /
@@ -367,7 +492,7 @@ function movementQuantity(movement: Movement) {
                                     / {{ item.unit ?? 'un' }}
                                 </p>
                                 <p v-else class="text-xs text-muted-foreground">
-                                    Custo médio desconhecido
+                                    Desconhecido
                                 </p>
                             </td>
                             <td class="p-4">
@@ -407,10 +532,13 @@ function movementQuantity(movement: Movement) {
                                     Movimentar
                                 </button>
                                 <button
-                                    v-if="item.type === 'supply'"
                                     type="button"
                                     class="inline-flex items-center gap-1 text-primary underline"
-                                    @click="openSupply(item)"
+                                    @click="
+                                        item.type === 'supply'
+                                            ? openSupply(item)
+                                            : openProduct(item)
+                                    "
                                 >
                                     <EditPencil
                                         aria-hidden="true"
@@ -418,19 +546,24 @@ function movementQuantity(movement: Movement) {
                                     />
                                     Editar
                                 </button>
-                                <Link
-                                    v-else
-                                    class="inline-flex items-center gap-1 text-primary underline"
-                                    :href="`/products/${item.id}/edit`"
-                                    ><EditPencil
-                                        aria-hidden="true"
-                                        class="size-4"
-                                    />Editar produto</Link
+                                <button
+                                    type="button"
+                                    class="text-primary underline"
+                                    @click="openDetails(item)"
                                 >
+                                    Detalhes
+                                </button>
+                                <button
+                                    type="button"
+                                    class="text-destructive underline"
+                                    @click="openArchive(item)"
+                                >
+                                    Arquivar
+                                </button>
                             </td>
                         </tr>
                         <tr v-if="!items.data.length">
-                            <td colspan="7" class="p-4 text-muted-foreground">
+                            <td colspan="8" class="p-4 text-muted-foreground">
                                 Nenhum item encontrado.
                             </td>
                         </tr>
@@ -580,14 +713,123 @@ function movementQuantity(movement: Movement) {
         </section>
     </div>
 
-    <Dialog v-model:open="supplyOpen">
+    <Dialog v-model:open="productOpen">
+        <DialogContent class="max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+                <DialogTitle>{{
+                    editingProduct ? 'Editar produto' : 'Cadastrar produto'
+                }}</DialogTitle>
+                <DialogDescription
+                    >Dados do produto, preço de venda e estoque
+                    mínimo.</DialogDescription
+                >
+            </DialogHeader>
+            <ProductForm
+                v-if="productOpen"
+                :key="editingProduct?.id ?? 'new'"
+                :product="editingProduct"
+                @saved="productOpen = false"
+                @cancel="productOpen = false"
+            />
+        </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="detailsOpen">
         <DialogContent>
+            <DialogHeader>
+                <DialogTitle>{{ detailItem?.name }}</DialogTitle>
+                <DialogDescription>{{
+                    detailItem?.type === 'product'
+                        ? 'Produto comercializável'
+                        : 'Insumo de atendimento'
+                }}</DialogDescription>
+            </DialogHeader>
+            <div v-if="detailItem" class="space-y-3 text-sm">
+                <p v-if="detailItem.brand">
+                    <strong>Marca:</strong> {{ detailItem.brand }}
+                </p>
+                <p class="whitespace-pre-wrap">
+                    {{ detailItem.description || 'Sem descrição.' }}
+                </p>
+                <p>
+                    <strong>Saldo:</strong>
+                    {{ quantity(detailItem.stock_quantity, detailItem.unit) }}
+                </p>
+                <p>
+                    <strong>Mínimo:</strong>
+                    {{ quantity(detailItem.min_stock, detailItem.unit) }}
+                </p>
+                <p v-if="detailItem.type === 'product'">
+                    <strong>Preço de venda:</strong>
+                    {{ currencyFormat.format(Number(detailItem.price)) }}
+                </p>
+                <p>
+                    <strong
+                        >Custo médio / {{ detailItem.unit ?? 'un' }}:</strong
+                    >
+                    {{
+                        detailItem.average_cost_milli_cents === null
+                            ? 'Desconhecido'
+                            : currencyFormat.format(
+                                  detailItem.average_cost_milli_cents / 100000,
+                              )
+                    }}
+                </p>
+            </div>
+            <DialogFooter
+                ><Button variant="outline" @click="detailsOpen = false"
+                    >Fechar</Button
+                ></DialogFooter
+            >
+        </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="archiveOpen">
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Arquivar {{ archiveItem?.name }}?</DialogTitle>
+                <DialogDescription
+                    >O histórico será preservado. O saldo deve estar zerado e
+                    insumos não podem estar vinculados a serviços
+                    ativos.</DialogDescription
+                >
+            </DialogHeader>
+            <InputError :message="archiveError" />
+            <p
+                v-if="Number(archiveItem?.stock_quantity) > 0"
+                class="text-sm text-destructive"
+            >
+                Registre uma movimentação para zerar o saldo antes de arquivar.
+            </p>
+            <DialogFooter>
+                <Button
+                    variant="destructive"
+                    :disabled="
+                        archiveForm.processing ||
+                        Number(archiveItem?.stock_quantity) > 0
+                    "
+                    @click="submitArchive"
+                    >Arquivar</Button
+                >
+                <Button variant="outline" @click="archiveOpen = false"
+                    >Cancelar</Button
+                >
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="supplyOpen">
+        <DialogContent class="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
                 <DialogTitle>
                     {{ editingSupplyId ? 'Editar insumo' : 'Cadastrar insumo' }}
                 </DialogTitle>
                 <DialogDescription>
-                    O saldo começa em zero. Registre uma entrada após salvar.
+                    {{
+                        editingSupplyId
+                            ? 'Saldo e custo médio só podem ser alterados por movimentações.'
+                            : 'Inclua uma entrada inicial opcional ou registre entradas após salvar.'
+                    }}
                 </DialogDescription>
             </DialogHeader>
             <form class="space-y-4" @submit.prevent="submitSupply">
@@ -650,6 +892,15 @@ function movementQuantity(movement: Movement) {
                         <InputError :message="supplyForm.errors.min_stock" />
                     </div>
                 </div>
+                <InitialStockFields
+                    v-if="!editingSupplyId"
+                    v-model:enabled="supplyForm.initial_entry"
+                    v-model:quantity="supplyForm.initial_quantity"
+                    v-model:total-cost="supplyForm.initial_total_cost"
+                    :unit="supplyForm.unit"
+                    id-prefix="supply"
+                    :errors="supplyForm.errors"
+                />
                 <DialogFooter>
                     <Button type="submit" :disabled="supplyForm.processing">
                         {{
@@ -741,6 +992,21 @@ function movementQuantity(movement: Movement) {
                     />
                     <p class="text-xs text-muted-foreground">
                         Usado para recalcular o custo médio ponderado do saldo.
+                        <span
+                            v-if="
+                                Number(movementForm.quantity) > 0 &&
+                                movementForm.total_cost !== ''
+                            "
+                        >
+                            Custo unitário estimado:
+                            {{
+                                currencyFormat.format(
+                                    Number(movementForm.total_cost) /
+                                        Number(movementForm.quantity),
+                                )
+                            }}
+                            / {{ selectedUnit }}.
+                        </span>
                     </p>
                     <InputError :message="movementForm.errors.total_cost" />
                 </div>

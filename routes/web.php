@@ -107,6 +107,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('inventory/supplies', [InventoryController::class, 'storeSupply'])->name('inventory.supplies.store');
     Route::put('inventory/supplies/{id}', [InventoryController::class, 'updateSupply'])
         ->whereNumber('id')->name('inventory.supplies.update');
+    Route::delete('inventory/supplies/{id}', [InventoryController::class, 'destroySupply'])
+        ->whereNumber('id')->name('inventory.supplies.destroy');
     Route::post('inventory/movements', [InventoryController::class, 'storeMovement'])->name('inventory.movements.store');
     Route::patch('schedule/appointments/{id}', [ScheduleController::class, 'updateAppointment'])->name('schedule.appointments.update');
     Route::post('schedule/blocks', [ScheduleController::class, 'storeBlock'])->name('schedule.blocks.store');

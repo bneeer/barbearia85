@@ -7,7 +7,6 @@ import {
     Boxes,
     CircleDollarSign,
     Mail,
-    Package,
     Users,
 } from 'lucide-vue-next';
 import AppLogo from '@/components/AppLogo.vue';
@@ -58,12 +57,6 @@ const operationNavItems: NavItem[] = [
         title: 'Serviços',
         href: '/services',
         icon: Scissor,
-        requiresAdmin: true,
-    },
-    {
-        title: 'Produtos',
-        href: '/products',
-        icon: Package,
         requiresAdmin: true,
     },
     {

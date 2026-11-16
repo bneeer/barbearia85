@@ -3,8 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Services\StockLedger;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class ProductController extends Controller
 {
@@ -19,7 +22,7 @@ class ProductController extends Controller
         abort_unless($product->barbershop_id === $request->user()->barbershop_id, 404);
     }
 
-    private function validatedData(Request $request): array
+    private function validatedData(Request $request, array $extraRules = []): array
     {
         return $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -27,6 +30,7 @@ class ProductController extends Controller
             'description' => ['required', 'string'],
             'price' => ['required', 'numeric', 'min:0', 'max:99999999.99', 'regex:/^\d+(\.\d{1,2})?$/'],
             'min_stock' => ['sometimes', 'required', 'integer', 'min:0', 'max:999999999'],
+            ...$extraRules,
         ], [
             'price.regex' => 'O preço deve ter no máximo duas casas decimais.',
         ]);
@@ -38,17 +42,10 @@ class ProductController extends Controller
 
         $filters = $request->validate(['search' => ['nullable', 'string', 'max:100']]);
 
-        return Inertia::render('Products/Index', [
-            'products' => Product::where('barbershop_id', $request->user()->barbershop_id)
-                ->when(isset($filters['search']) && $filters['search'] !== '', function ($query) use ($filters) {
-                    $query->where(function ($query) use ($filters) {
-                        $query->where('name', 'like', '%'.$filters['search'].'%')
-                            ->orWhere('brand', 'like', '%'.$filters['search'].'%');
-                    });
-                })
-                ->orderBy('name')->orderBy('id')
-                ->paginate(10)->withQueryString(),
-            'filters' => ['search' => $filters['search'] ?? ''],
+        return redirect()->route('inventory.index', [
+            'type' => 'product',
+            ...$filters,
+            ...$request->validate(['page' => ['nullable', 'integer', 'min:1']]),
         ]);
     }
 
@@ -56,33 +53,42 @@ class ProductController extends Controller
     {
         $this->authorizeAdmin($request);
 
-        return Inertia::render('Products/Create');
+        return redirect()->route('inventory.index', ['action' => 'create', 'item_type' => 'product']);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, StockLedger $ledger)
     {
         $this->authorizeAdmin($request);
 
-        Product::create([
-            ...$this->validatedData($request),
-            'barbershop_id' => $request->user()->barbershop_id,
-        ]);
+        $data = $this->validatedData($request, $ledger->initialEntryRules());
+        DB::transaction(function () use ($data, $request, $ledger) {
+            $product = Product::create([
+                ...Arr::except($data, ['initial_entry', 'initial_quantity', 'initial_total_cost']),
+                'barbershop_id' => $request->user()->barbershop_id,
+                'stock_quantity' => 0,
+            ]);
+            $ledger->recordInitialEntry($product, $data, $request->user());
+        });
 
-        return redirect()->route('products.index');
+        return back(fallback: route('inventory.index'))->with('success', 'Produto cadastrado.');
     }
 
     public function show(Request $request, Product $product)
     {
         $this->authorizeProduct($request, $product);
 
-        return Inertia::render('Products/Show', ['product' => $product]);
+        return redirect()->route('inventory.index', [
+            'action' => 'show', 'item_type' => 'product', 'item_id' => $product->id,
+        ]);
     }
 
     public function edit(Request $request, Product $product)
     {
         $this->authorizeProduct($request, $product);
 
-        return Inertia::render('Products/Edit', ['product' => $product]);
+        return redirect()->route('inventory.index', [
+            'action' => 'edit', 'item_type' => 'product', 'item_id' => $product->id,
+        ]);
     }
 
     public function update(Request $request, Product $product)
@@ -90,14 +96,22 @@ class ProductController extends Controller
         $this->authorizeProduct($request, $product);
         $product->update($this->validatedData($request));
 
-        return redirect()->route('products.index');
+        return back(fallback: route('inventory.index'))->with('success', 'Produto atualizado.');
     }
 
     public function destroy(Request $request, Product $product)
     {
         $this->authorizeProduct($request, $product);
-        $product->delete();
+        DB::transaction(function () use ($product) {
+            $locked = Product::query()->lockForUpdate()->findOrFail($product->id);
+            if ($locked->stock_quantity > 0) {
+                throw ValidationException::withMessages([
+                    'archive' => 'Zere o saldo por movimentação antes de arquivar o produto.',
+                ]);
+            }
+            $locked->delete();
+        });
 
-        return redirect()->route('products.index');
+        return back(fallback: route('inventory.index'))->with('success', 'Produto arquivado.');
     }
 }

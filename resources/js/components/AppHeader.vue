@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Home, Menu } from '@iconoir/vue';
 import { Link, usePage } from '@inertiajs/vue3';
-import { CalendarDays, Package } from 'lucide-vue-next';
+import { Boxes, CalendarDays } from 'lucide-vue-next';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
@@ -61,9 +61,9 @@ const mainNavItems: NavItem[] = [
         icon: CalendarDays,
     },
     {
-        title: 'Produtos',
-        href: '/products',
-        icon: Package,
+        title: 'Estoque',
+        href: '/inventory',
+        icon: Boxes,
         requiresAdmin: true,
     },
 ];

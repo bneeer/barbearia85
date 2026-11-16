@@ -10,6 +10,47 @@ use Illuminate\Validation\ValidationException;
 
 class StockLedger
 {
+    public function initialEntryRules(): array
+    {
+        return [
+            'initial_entry' => ['sometimes', 'boolean'],
+            'initial_quantity' => ['exclude_unless:initial_entry,true', 'required', 'numeric', 'gt:0', 'max:999999999.999', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'initial_total_cost' => ['exclude_unless:initial_entry,true', 'required', 'regex:/^\d{1,9}([,.]\d{1,2})?$/'],
+        ];
+    }
+
+    public function cents(string|int|float $amount): int
+    {
+        $amount = str_replace(',', '.', (string) $amount);
+        [$whole, $fraction] = array_pad(explode('.', $amount, 2), 2, '0');
+
+        return (int) $whole * 100 + (int) str_pad($fraction, 2, '0');
+    }
+
+    public function recordInitialEntry(Product|Supply $item, array $data, User $user): void
+    {
+        if (! ($data['initial_entry'] ?? false)) {
+            return;
+        }
+
+        $quantity = $this->milliUnits($data['initial_quantity']);
+        if (($item instanceof Product || $item->unit === 'un') && $quantity % 1000 !== 0) {
+            throw ValidationException::withMessages([
+                'initial_quantity' => 'A quantidade deste item deve ser inteira.',
+            ]);
+        }
+
+        $this->record(
+            $item,
+            $quantity,
+            'entry',
+            'Entrada inicial no cadastro',
+            $user,
+            null,
+            $this->cents($data['initial_total_cost']),
+        );
+    }
+
     public function milliUnits(string|int|float $quantity): int
     {
         if (! preg_match('/^(\d{1,9})(?:\.(\d{1,3}))?$/D', (string) $quantity, $matches)) {
