@@ -55,22 +55,6 @@ const labels = [
     'Data e horário',
     'Confirmação',
 ];
-const titles = [
-    'Vamos nos conhecer?',
-    'Onde será sua próxima experiência?',
-    'Quais cuidados você procura?',
-    'Com quem você quer agendar?',
-    'Reserve um momento só seu.',
-    'Tudo pronto para confirmar?',
-];
-const copies = [
-    'Informe seus dados para identificar seu agendamento.',
-    'Escolha uma unidade e conheça o espaço pelas fotos. Deslize para ver mais opções.',
-    'Selecione seus serviços. Cada um terá seu próprio profissional e horário, inclusive em dias diferentes.',
-    'Escolha seu profissional favorito ou veja os horários de toda a equipe.',
-    'Escolha uma data e um horário disponível.',
-    'Confira cada atendimento. Todos serão confirmados juntos, após uma nova validação dos horários.',
-];
 const ctas = [
     'Escolher unidade',
     'Escolher serviços',
@@ -81,6 +65,35 @@ const ctas = [
 ];
 const step = ref(0);
 const name = ref('');
+const firstName = computed(() => name.value.trim().split(/\s+/)[0] ?? '');
+const titles = computed(() => [
+    'Vamos nos conhecer?',
+    firstName.value
+        ? `Onde será sua próxima experiência, ${firstName.value}?`
+        : 'Onde será sua próxima experiência?',
+    firstName.value
+        ? `${firstName.value}, quais cuidados você procura?`
+        : 'Quais cuidados você procura?',
+    firstName.value
+        ? `${firstName.value}, com quem você quer agendar?`
+        : 'Com quem você quer agendar?',
+    firstName.value
+        ? `${firstName.value}, qual momento fica melhor para você?`
+        : 'Reserve um momento só seu.',
+    firstName.value
+        ? `${firstName.value}, vamos revisar seu agendamento?`
+        : 'Tudo pronto para confirmar?',
+]);
+const copies = computed(() => [
+    'Informe seus dados para identificar seu agendamento.',
+    firstName.value
+        ? `Prazer em conhecer você, ${firstName.value}! Escolha uma unidade e conheça o espaço pelas fotos. Deslize para ver mais opções.`
+        : 'Escolha uma unidade e conheça o espaço pelas fotos. Deslize para ver mais opções.',
+    'Selecione seus serviços. Cada um terá seu próprio profissional e horário, inclusive em dias diferentes.',
+    'Escolha seu profissional favorito ou veja os horários de toda a equipe.',
+    'Escolha uma data e um horário disponível.',
+    'Confira cada atendimento. Todos serão confirmados juntos, após uma nova validação dos horários.',
+]);
 const email = ref('');
 const phone = ref('');
 const shopId = ref<number | null>(null);
@@ -724,7 +737,7 @@ function back() {
                         Seu próximo cuidado já tem hora marcada!
                     </h1>
                     <p class="mt-4 text-muted-foreground">
-                        {{ name }}, esperamos você em {{ shop?.name }}.
+                        {{ name }}, esperamos você na {{ shop?.name }}.
                     </p>
                     <p class="mt-2">{{ shop?.address }}</p>
                     <p

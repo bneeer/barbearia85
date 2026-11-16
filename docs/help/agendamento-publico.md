@@ -1,10 +1,10 @@
 # Agendamento público
 
-O cliente inicia uma reserva pelo site da barbearia em **Agendar**. Unidades fechadas ou sem horários disponíveis não podem ser selecionadas para novos atendimentos. Oriente o cliente a usar um e-mail e telefone que consiga consultar.
+O cliente inicia uma reserva pela landing page da barbearia usando qualquer chamada para agendamento, como **Escolher horário**, **Ver serviços e horários** ou **Agendar agora**. Todas levam ao mesmo fluxo público de **Agendar**; links de navegação da página apenas levam às respectivas seções. Unidades fechadas ou sem horários disponíveis não podem ser selecionadas para novos atendimentos. Oriente o cliente a usar um e-mail e telefone que consiga consultar.
 
 ## Etapas
 
-1. **Seus dados:** informe nome, e-mail e telefone para identificar o pedido e receber mensagens relacionadas.
+1. **Seus dados:** informe nome, e-mail e telefone para identificar o pedido e receber mensagens relacionadas. O primeiro nome informado personaliza os títulos e as mensagens dos próximos passos; revise o nome se quiser alterar como o site se dirige a você.
 2. **Unidade:** escolha uma barbearia aberta. Fotos e informações ajudam a identificar o local.
 3. **Serviços:** selecione um ou mais serviços disponíveis na unidade. Cada serviço é reservado como um atendimento próprio.
 4. **Barbeiro:** escolha um profissional compatível com o serviço ou veja horários de toda a equipe.

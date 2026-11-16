@@ -100,6 +100,23 @@ async function mount(t) {
     return state;
 }
 
+test('personalizes every step after customer details with the first name', async (t) => {
+    const s = await mount(t);
+
+    s.name = '  Carlos Silva  ';
+    assert.equal(s.titles[0], 'Vamos nos conhecer?');
+    assert.equal(s.titles[1], 'Onde será sua próxima experiência, Carlos?');
+    assert.match(s.copies[1], /^Prazer em conhecer você, Carlos!/);
+    assert.equal(s.titles[2], 'Carlos, quais cuidados você procura?');
+    assert.equal(s.titles[3], 'Carlos, com quem você quer agendar?');
+    assert.equal(s.titles[4], 'Carlos, qual momento fica melhor para você?');
+    assert.equal(s.titles[5], 'Carlos, vamos revisar seu agendamento?');
+
+    s.name = '';
+    assert.equal(s.titles[1], 'Onde será sua próxima experiência?');
+    assert.match(s.copies[1], /^Escolha uma unidade/);
+});
+
 test('configures disjoint professionals per service, preserves other items and advances to summary', async (t) => {
     const s = await mount(t);
     t.mock.method(globalThis, 'fetch', async (url) => {
